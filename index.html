@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#030711" />
+    <meta name="description" content="四川农业大学信息工程学院全国新生生源轨迹可视化系统" />
+    <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
+    <title>全国新生生源轨迹｜四川农业大学信息工程学院</title>
+  </head>
+  <body>
+    <canvas id="ambient-canvas" class="ambient-canvas" aria-hidden="true"></canvas>
+    <div class="scanlines" aria-hidden="true"></div>
+
+    <main id="app" class="app-shell app-enter">
+      <header class="brand-bar glass-panel">
+        <div class="brand-logo brand-logo--school">
+          <img src="./assets/logos/sicau-logo.png" alt="四川农业大学" />
+        </div>
+        <div class="brand-heading">
+          <p class="brand-kicker">SICau · Welcome 2026</p>
+          <h1>全国新生生源轨迹</h1>
+          <p>四川农业大学信息工程学院 <span>· 智启新程 · 码赴山海</span></p>
+        </div>
+        <div class="brand-tools">
+          <img class="college-logo" src="./assets/logos/xxgc-logo.png" alt="四川农业大学信息工程学院" />
+          <div class="clock-wrap">
+            <time id="current-time">--:--:--</time>
+            <button id="fullscreen-btn" class="icon-btn" type="button" aria-label="进入全屏" title="进入全屏">
+              <span aria-hidden="true">⛶</span>
+            </button>
+          </div>
+          <button id="version-trigger" class="version-tag" type="button" aria-label="系统版本">V1.0</button>
+        </div>
+      </header>
+
+      <section class="main-layout">
+        <aside class="operation-panel glass-panel corner-lines" aria-labelledby="origin-title">
+          <div class="panel-heading">
+            <span class="eyebrow">ORIGIN / 生源地</span>
+            <h2 id="origin-title">从哪里出发？</h2>
+            <p class="panel-intro">选择你的生源城市，让一束光跨越山海抵达雅安。</p>
+          </div>
+
+          <div class="search-field">
+            <label for="city-search">搜索城市或省份</label>
+            <div class="input-shell">
+              <span class="search-icon" aria-hidden="true"></span>
+              <input id="city-search" type="search" placeholder="如：成都 / chengdu / cd" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="city-options" aria-expanded="false" />
+              <button id="clear-search" class="clear-search" type="button" aria-label="清空搜索">×</button>
+            </div>
+            <ul id="city-options" class="search-options" role="listbox" hidden></ul>
+          </div>
+
+          <div id="selected-city" class="selected-card is-empty" aria-live="polite">
+            <span class="selected-marker" aria-hidden="true"></span>
+            <div>
+              <small>当前选择</small>
+              <strong id="selected-city-name">等待选择生源城市</strong>
+              <span id="selected-city-coord">请选择搜索候选项</span>
+            </div>
+          </div>
+
+          <button id="generate-btn" class="primary-btn" type="button" disabled>
+            <span class="btn-glow" aria-hidden="true"></span>
+            <span id="generate-btn-text">生成我的求学轨迹</span>
+            <span class="btn-arrow" aria-hidden="true">→</span>
+          </button>
+          <p class="search-hint"><span aria-hidden="true">⌘</span> 支持中文 / 拼音 / 首字母搜索</p>
+
+          <div class="destination-card">
+            <div class="destination-pulse" aria-hidden="true"></div>
+            <div>
+              <small>DESTINATION</small>
+              <strong>川农信工 · 雅安</strong>
+              <span>新康路 46 号 · 第四教学楼</span>
+            </div>
+          </div>
+        </aside>
+
+        <section class="map-stage glass-panel" aria-label="全国生源轨迹地图">
+          <div class="map-meta">
+            <span><i class="legend-dot legend-dot--history"></i>历史轨迹</span>
+            <span><i class="legend-dot legend-dot--current"></i>当前轨迹</span>
+            <span><i class="legend-dot legend-dot--campus"></i>雅安校区</span>
+          </div>
+          <div class="map-corner map-corner--tl" aria-hidden="true"></div>
+          <div class="map-corner map-corner--br" aria-hidden="true"></div>
+          <div id="map-loading" class="map-loading">
+            <span class="loading-ring" aria-hidden="true"></span>
+            <p>正在载入全国地图</p>
+          </div>
+          <div id="map-chart" class="map-chart"></div>
+          <div id="arrival-burst" class="arrival-burst" aria-hidden="true"></div>
+
+          <article id="result-card" class="result-card" role="dialog" aria-modal="true" aria-labelledby="result-title" hidden>
+            <div class="result-halo" aria-hidden="true"></div>
+            <span class="result-label">ARRIVAL CONFIRMED</span>
+            <h2 id="result-title">欢迎抵达川农信工</h2>
+            <div class="route-summary">
+              <div><small>出发地</small><strong id="result-origin">—</strong></div>
+              <span class="route-arrow" aria-hidden="true">→</span>
+              <div><small>目的地</small><strong>川农信工 · 雅安校区</strong></div>
+            </div>
+            <div class="distance-value"><span>约</span><strong id="result-distance">0</strong><span>公里 · 直线距离</span></div>
+            <p id="result-message" class="result-message"></p>
+            <button id="finish-btn" class="primary-btn result-finish" type="button">完成打卡 · <span id="result-countdown">6</span>s</button>
+          </article>
+        </section>
+
+        <aside class="stats-panel glass-panel corner-lines" aria-labelledby="stats-title">
+          <div class="panel-heading stats-heading">
+            <span class="eyebrow">LIVE DATA / 实时汇聚</span>
+            <h2 id="stats-title">新生足迹总览</h2>
+            <button id="ranking-toggle" class="text-btn" type="button" aria-expanded="false">查看排行</button>
+          </div>
+          <div class="main-stat">
+            <span>累计打卡</span>
+            <strong id="total-count" data-value="0">0</strong>
+            <em>位新同学</em>
+          </div>
+          <div class="stat-grid">
+            <div><span>覆盖省份</span><strong id="province-count" data-value="0">0</strong><small>个</small></div>
+            <div><span>生源城市</span><strong id="city-count" data-value="0">0</strong><small>座</small></div>
+          </div>
+          <section id="ranking-section" class="ranking-section">
+            <div class="section-title"><span>生源城市 TOP 5</span><small>人数</small></div>
+            <ol id="city-ranking" class="ranking-list"></ol>
+          </section>
+          <div class="latest-card">
+            <span class="live-dot" aria-hidden="true"></span>
+            <div><small>最新抵达</small><strong id="latest-city">等待第一束光</strong></div>
+          </div>
+          <p class="privacy-note">仅记录城市信息，不收集任何个人身份数据</p>
+        </aside>
+      </section>
+
+      <footer class="status-bar glass-panel">
+        <span class="status-signal" aria-hidden="true"></span>
+        <p id="status-text" aria-live="polite">五湖四海萌新，齐聚信工山海</p>
+        <span id="record-badge">本机记录 0 条</span>
+      </footer>
+    </main>
+
+    <div id="toast-region" class="toast-region" role="status" aria-live="polite"></div>
+
+    <div id="admin-overlay" class="modal-overlay" hidden>
+      <section class="admin-panel glass-panel" role="dialog" aria-modal="true" aria-labelledby="admin-title">
+        <header><div><span class="eyebrow">LOCAL CONSOLE</span><h2 id="admin-title">现场数据管理</h2></div><button id="admin-close" class="icon-btn" type="button" aria-label="关闭管理面板">×</button></header>
+        <div class="admin-count"><span>当前本地记录</span><strong id="admin-record-count">0</strong><small>条</small></div>
+        <p id="storage-warning" class="warning-text" hidden></p>
+        <div class="admin-actions">
+          <button id="undo-btn" type="button">↶ 撤销最后一条</button>
+          <button id="export-btn" type="button">⇩ 导出 JSON 备份</button>
+          <label class="file-btn" for="import-file">⇧ 导入 JSON 覆盖</label>
+          <input id="import-file" type="file" accept="application/json,.json" hidden />
+          <button id="clear-records-btn" class="danger-btn" type="button">清空全部记录</button>
+        </div>
+        <p class="admin-tip">数据只保存在当前浏览器。建议活动期间定时导出备份。</p>
+      </section>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

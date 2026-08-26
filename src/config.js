@@ -14,16 +14,20 @@ export const APP_STATES = Object.freeze({
   SELECTING: 'selecting',
   ANIMATING: 'animating',
   RESULT: 'result',
+  AVATAR: 'avatar',
 });
 
 export const ANIMATION = Object.freeze({
   originDelay: 360,
   flightDuration: 2_750,
   burstDuration: 820,
-  resultDuration: 6_000,
+  resultDuration: 20_000,
   resizeDebounce: 90,
   numberDuration: 520,
 });
+
+export const AVATAR_LIFETIME = 60 * 60 * 1_000;
+export const MAX_DESTINATION_AVATARS = 100;
 
 export const ROUTE_COLORS = ['#2de2ff', '#3b82f6', '#8b5cf6', '#4ade80', '#38bdf8'];
 

@@ -167,39 +167,86 @@ export function updateStatistics(records) {
   }
 }
 
-export function createResultController(onFinish) {
+export function createResultController({ onFinish, onAi, onManual, onDownload }) {
   const card = document.querySelector('#result-card');
   const countdown = document.querySelector('#result-countdown');
+  const avatarCountdown = document.querySelector('#result-avatar-countdown');
+  const avatarSummary = document.querySelector('#result-avatar-summary');
+  const avatarImage = document.querySelector('#result-avatar-image');
+  const choiceActions = document.querySelector('#result-choice-actions');
+  const completeActions = document.querySelector('#result-complete-actions');
   let timer = null;
   let interval = null;
+  let concealTimer = null;
+  let activeAvatar = null;
 
-  function hide() {
-    if (card.hidden) return;
+  function stopTimers() {
     window.clearTimeout(timer);
     window.clearInterval(interval);
+    window.clearTimeout(concealTimer);
+    timer = null;
+    interval = null;
+  }
+
+  function conceal() {
+    stopTimers();
     card.classList.remove('is-visible');
-    window.setTimeout(() => { card.hidden = true; }, 220);
+    concealTimer = window.setTimeout(() => { card.hidden = true; }, 220);
+  }
+
+  function finish() {
+    if (card.hidden) return;
+    conceal();
     onFinish();
   }
 
-  document.querySelector('#finish-btn').addEventListener('click', hide);
+  function enterAvatar(callback) {
+    stopTimers();
+    conceal();
+    callback();
+  }
+
+  document.querySelector('#finish-btn').addEventListener('click', finish);
+  document.querySelector('#result-avatar-finish-btn').addEventListener('click', finish);
+  document.querySelector('#result-ai-btn').addEventListener('click', () => enterAvatar(onAi));
+  document.querySelector('#result-manual-btn').addEventListener('click', () => enterAvatar(onManual));
+  document.querySelector('#result-download-btn').addEventListener('click', () => {
+    if (activeAvatar) onDownload(activeAvatar.imageDataUrl);
+  });
 
   return {
-    show(record) {
+    show(record, avatar = null) {
+      stopTimers();
+      activeAvatar = avatar;
       document.querySelector('#result-origin').textContent = formatLocation(record);
       document.querySelector('#result-distance').textContent = String(record.distanceKm);
       document.querySelector('#result-message').textContent = `跨越约 ${record.distanceKm} 公里，从【${formatLocation(record)}】奔赴川农信工。以代码为翼，以科技为光，开启全新逐梦之旅。`;
+      avatarSummary.hidden = !avatar;
+      choiceActions.hidden = Boolean(avatar);
+      completeActions.hidden = !avatar;
+      if (avatar) avatarImage.src = avatar.imageDataUrl;
+      else avatarImage.removeAttribute('src');
       let remaining = Math.ceil(ANIMATION.resultDuration / 1_000);
       countdown.textContent = String(remaining);
+      avatarCountdown.textContent = String(remaining);
       card.hidden = false;
       requestAnimationFrame(() => card.classList.add('is-visible'));
       interval = window.setInterval(() => {
         remaining = Math.max(0, remaining - 1);
         countdown.textContent = String(remaining);
+        avatarCountdown.textContent = String(remaining);
       }, 1_000);
-      timer = window.setTimeout(hide, ANIMATION.resultDuration);
+      timer = window.setTimeout(finish, ANIMATION.resultDuration);
     },
-    hide,
+    hide: finish,
+    conceal,
+    reset() {
+      stopTimers();
+      activeAvatar = null;
+      avatarImage.removeAttribute('src');
+      card.hidden = true;
+      card.classList.remove('is-visible');
+    },
     isVisible: () => !card.hidden,
   };
 }

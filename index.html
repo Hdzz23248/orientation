@@ -104,7 +104,19 @@
             </div>
             <div class="distance-value"><span>约</span><strong id="result-distance">0</strong><span>公里 · 直线距离</span></div>
             <p id="result-message" class="result-message"></p>
-            <button id="finish-btn" class="primary-btn result-finish" type="button">完成打卡 · <span id="result-countdown">6</span>s</button>
+            <div id="result-avatar-summary" class="result-avatar-summary" hidden>
+              <img id="result-avatar-image" alt="本次生成的数字形象" />
+              <div><small>你的数字形象已就位</small><strong>已绑定至雅安终点</strong></div>
+            </div>
+            <div id="result-choice-actions" class="result-choice-actions">
+              <button id="result-ai-btn" class="result-action result-action--ai" type="button"><span>AI</span>生成 AI 数字形象</button>
+              <button id="result-manual-btn" class="result-action" type="button"><span>◆</span>简单捏脸</button>
+              <button id="finish-btn" class="result-action result-action--ghost" type="button">直接完成 · <span id="result-countdown">20</span>s</button>
+            </div>
+            <div id="result-complete-actions" class="result-complete-actions" hidden>
+              <button id="result-download-btn" class="result-action" type="button">下载头像 PNG</button>
+              <button id="result-avatar-finish-btn" class="primary-btn result-finish" type="button">完成本次打卡 · <span id="result-avatar-countdown">20</span>s</button>
+            </div>
           </article>
         </section>
 
@@ -159,6 +171,84 @@
         <p class="admin-tip">数据只保存在当前浏览器。建议活动期间定时导出备份。</p>
       </section>
     </div>
+
+    <section id="avatar-modal" class="avatar-modal" hidden>
+      <div class="avatar-dialog glass-panel" role="dialog" aria-modal="true" aria-labelledby="avatar-title">
+        <header class="avatar-header">
+          <div>
+            <span class="eyebrow">DIGITAL IDENTITY / 数字形象</span>
+            <h2 id="avatar-title">创建你的信工数字形象</h2>
+            <p id="avatar-subtitle">本次头像仅保留在当前页面，流程结束后自动清除</p>
+          </div>
+          <button id="avatar-close" class="icon-btn" type="button" aria-label="关闭头像制作">×</button>
+        </header>
+
+        <div class="avatar-layout">
+          <div class="avatar-preview" id="avatar-preview">
+            <div id="avatar-placeholder" class="avatar-placeholder">
+              <span class="avatar-placeholder-icon" aria-hidden="true">◇</span>
+              <strong>数字形象舱</strong>
+              <small>等待载入基础形象</small>
+            </div>
+            <video id="avatar-video" autoplay muted playsinline hidden></video>
+            <img id="avatar-preview-image" alt="数字形象预览" hidden />
+            <div id="avatar-generating" class="avatar-generating" hidden>
+              <span class="loading-ring" aria-hidden="true"></span>
+              <strong>正在生成数字形象</strong>
+              <small>AI 正在处理，请勿关闭页面或重复点击</small>
+            </div>
+            <div class="avatar-scan" aria-hidden="true"></div>
+          </div>
+
+          <div class="avatar-controls">
+            <section data-avatar-stage="capture" class="avatar-stage">
+              <span class="avatar-step">01 / 获取自拍</span>
+              <h3>选择清晰的正面照片</h3>
+              <p>照片会先在本机裁剪压缩，再由本地服务安全转发至百度 AI。</p>
+              <div class="capture-actions">
+                <button id="avatar-camera-btn" type="button">摄像头拍照</button>
+                <label for="avatar-file">选择本地照片</label>
+                <input id="avatar-file" type="file" accept="image/jpeg,image/png" hidden />
+              </div>
+              <button id="avatar-take-photo" class="secondary-wide" type="button" hidden>拍下当前画面</button>
+              <div id="avatar-consent-wrap" class="avatar-consent" hidden>
+                <p>照片将发送至百度 AI，用于生成本次动漫头像。系统不会保存原始照片，完成或退出后将自动清除。</p>
+                <label><input id="avatar-consent" type="checkbox" /> 我已了解并同意本次照片处理</label>
+              </div>
+              <p id="avatar-error" class="avatar-error" role="alert" hidden></p>
+              <div id="avatar-error-actions" class="avatar-error-actions" hidden>
+                <button id="avatar-retry" type="button">重试</button>
+                <button id="avatar-use-manual" type="button">改用简单捏脸</button>
+              </div>
+            </section>
+
+            <section data-avatar-stage="editing" class="avatar-stage" hidden>
+              <span class="avatar-step">02 / 轻量定制</span>
+              <h3>装配你的科技身份</h3>
+              <div id="manual-avatar-section" class="avatar-option-section">
+                <label>基础形象</label>
+                <div id="manual-avatar-grid" class="manual-avatar-grid"></div>
+              </div>
+              <div class="avatar-option-section">
+                <label>科技主题</label>
+                <div id="avatar-theme-options" class="theme-options"></div>
+              </div>
+              <div class="avatar-option-section">
+                <label>科技配件</label>
+                <div id="avatar-accessory-options" class="accessory-options"></div>
+              </div>
+              <p id="avatar-compose-error" class="avatar-error" role="alert" hidden></p>
+            </section>
+          </div>
+        </div>
+
+        <footer class="avatar-actions">
+          <button id="avatar-cancel" class="avatar-secondary-btn" type="button">返回打卡结果</button>
+          <button id="avatar-generate" class="primary-btn avatar-primary-btn" type="button" disabled>开始生成</button>
+          <button id="avatar-complete" class="primary-btn avatar-primary-btn" type="button" hidden>完成并绑定终点</button>
+        </footer>
+      </div>
+    </section>
 
     <script type="module" src="/src/main.js"></script>
   </body>

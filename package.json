@@ -4,14 +4,21 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "concurrently -k -n WEB,API -c cyan,green \"npm:dev:web\" \"npm:dev:api\"",
+    "dev:web": "vite",
+    "dev:api": "node --watch server/index.js",
     "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
-    "echarts": "^6.0.0"
+    "@dicebear/core": "^10.6.1",
+    "@dicebear/styles": "^10.5.0",
+    "dotenv": "^17.4.2",
+    "echarts": "^6.0.0",
+    "express": "^5.2.1"
   },
   "devDependencies": {
+    "concurrently": "^10.0.5",
     "vite": "^7.1.3"
   }
 }

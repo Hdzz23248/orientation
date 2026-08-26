@@ -9,6 +9,11 @@ if [ ! -d node_modules ]; then
   npm install
 fi
 
-echo "迎新生源轨迹系统将运行在：http://127.0.0.1:4173"
-npm run build
-npm run preview -- --host 127.0.0.1 --port 4173
+if [ ! -f .env ]; then
+  echo "提示：未找到 .env，AI 生成功能将不可用，简单捏脸仍可正常使用。"
+  echo "如需启用 AI，请复制 .env.example 为 .env 并填写百度 API 密钥。"
+fi
+
+echo "前端：http://127.0.0.1:5173"
+echo "头像服务：http://127.0.0.1:3001"
+npm run dev

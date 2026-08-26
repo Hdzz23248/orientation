@@ -1,5 +1,7 @@
 import './styles.css';
 import cities from './data/cities.json';
+import { createAvatarController } from './avatar-controller.js';
+import { downloadAvatar } from './avatar-image.js';
 import { ANIMATION, APP_STATES, CAMPUS, COPY, ROUTE_COLORS } from './config.js';
 import { createMapChart } from './map-chart.js';
 import {
@@ -19,7 +21,7 @@ import {
   triggerArrivalBurst,
   updateStatistics,
 } from './ui.js';
-import { calculateDistanceKm, createRecordId, wait } from './utils.js';
+import { calculateDistanceKm, createRecordId, formatLocation, wait } from './utils.js';
 
 const elements = {
   generateButton: document.querySelector('#generate-btn'),
@@ -35,7 +37,10 @@ let appState = APP_STATES.IDLE;
 let selectedCity = null;
 let records = loadRecords();
 let flowToken = 0;
+let activeRecord = null;
+let activeAvatar = null;
 let chart;
+let avatarController;
 
 function setStatus(text) {
   elements.status.textContent = text;
@@ -44,7 +49,9 @@ function setStatus(text) {
 function setState(nextState) {
   appState = nextState;
   document.body.dataset.state = nextState;
-  const locked = nextState === APP_STATES.ANIMATING || nextState === APP_STATES.RESULT;
+  const locked = nextState === APP_STATES.ANIMATING
+    || nextState === APP_STATES.RESULT
+    || nextState === APP_STATES.AVATAR;
   citySearch.setDisabled(locked);
   elements.generateButton.disabled = locked || !selectedCity;
   elements.generateText.textContent = nextState === APP_STATES.ANIMATING ? '轨迹生成中…' : '生成我的求学轨迹';
@@ -85,14 +92,57 @@ function refreshData() {
 
 function finishResult() {
   flowToken += 1;
+  resultController.reset();
+  avatarController?.reset();
   chart.clearCurrent();
   citySearch.reset();
   selectedCity = null;
+  activeRecord = null;
+  activeAvatar = null;
   setState(APP_STATES.IDLE);
   setStatus(COPY.idle);
 }
 
-const resultController = createResultController(finishResult);
+function openAvatar(mode) {
+  if (!activeRecord || appState !== APP_STATES.RESULT) return;
+  setState(APP_STATES.AVATAR);
+  setStatus(`数字形象创建中 · ${activeRecord.city} → 川农信工`);
+  avatarController.open({
+    origin: formatLocation(activeRecord),
+    campus: CAMPUS.name,
+    mode,
+  }).catch(() => {
+    showToast('数字形象面板加载失败，已返回打卡结果', 'error');
+    avatarController.reset();
+    setState(APP_STATES.RESULT);
+    resultController.show(activeRecord);
+  });
+}
+
+const resultController = createResultController({
+  onFinish: finishResult,
+  onAi: () => openAvatar('ai'),
+  onManual: () => openAvatar('manual'),
+  onDownload: downloadAvatar,
+});
+
+avatarController = createAvatarController({
+  onComplete: (avatar) => {
+    if (!activeRecord) return;
+    activeAvatar = avatar;
+    chart.addDestinationAvatar(avatar.imageDataUrl);
+    setState(APP_STATES.RESULT);
+    setStatus(`数字形象已抵达 · ${activeRecord.city} → 川农信工`);
+    resultController.show(activeRecord, avatar);
+  },
+  onCancel: () => {
+    if (!activeRecord) return;
+    activeAvatar = null;
+    setState(APP_STATES.RESULT);
+    setStatus(COPY.complete(activeRecord));
+    resultController.show(activeRecord);
+  },
+});
 
 async function generateRoute() {
   if (appState !== APP_STATES.SELECTING || !selectedCity) {
@@ -101,6 +151,7 @@ async function generateRoute() {
   }
   const city = selectedCity;
   const token = ++flowToken;
+  activeAvatar = null;
   const record = {
     id: createRecordId(),
     province: city.province,
@@ -127,6 +178,7 @@ async function generateRoute() {
     chart.updateHistory(records);
     updateStatistics(records);
     chart.setBurst(false);
+    activeRecord = record;
     setState(APP_STATES.RESULT);
     setStatus(COPY.complete(record));
     resultController.show(record);
@@ -174,8 +226,8 @@ function initFullscreen() {
 function initAdmin() {
   const close = () => { elements.adminOverlay.hidden = true; };
   const open = () => {
-    if (appState === APP_STATES.ANIMATING) {
-      showToast('请等待当前轨迹抵达后再管理数据', 'warning');
+    if (appState === APP_STATES.ANIMATING || appState === APP_STATES.RESULT || appState === APP_STATES.AVATAR) {
+      showToast('请先完成当前新生的打卡流程', 'warning');
       return;
     }
     elements.adminOverlay.hidden = false;
@@ -305,11 +357,14 @@ initRankingToggle();
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
   if (!elements.adminOverlay.hidden) admin.close();
+  else if (avatarController.isOpen()) avatarController.cancel();
   else if (resultController.isVisible()) resultController.hide();
 });
 
 window.addEventListener('beforeunload', () => {
   window.clearInterval(clockTimer);
+  resultController.reset();
+  avatarController.reset();
   stopAmbient();
   chart.dispose();
 }, { once: true });

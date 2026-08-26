@@ -3,7 +3,13 @@ import { EffectScatterChart, LinesChart, ScatterChart } from 'echarts/charts';
 import { GeoComponent, TooltipComponent } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
 import chinaGeoJSON from './data/china.json';
-import { ANIMATION, CAMPUS, ROUTE_COLORS } from './config.js';
+import {
+  ANIMATION,
+  AVATAR_LIFETIME,
+  CAMPUS,
+  MAX_DESTINATION_AVATARS,
+  ROUTE_COLORS,
+} from './config.js';
 import { aggregateRecords, debounce, prefersReducedMotion } from './utils.js';
 
 const CAMPUS_COORDS = [CAMPUS.longitude, CAMPUS.latitude];
@@ -19,6 +25,8 @@ export function createMapChart(container) {
   const chart = echarts.init(container, null, { renderer: 'canvas' });
   let records = [];
   let currentRecord = null;
+  let destinationAvatars = [];
+  let destinationAvatarTimer = null;
   let bursting = false;
   const reducedMotion = prefersReducedMotion();
 
@@ -159,6 +167,95 @@ export function createMapChart(container) {
     };
   }
 
+  function destinationAvatarSeries() {
+    const avatarById = new Map(destinationAvatars.map((avatar) => [avatar.id, avatar]));
+    return {
+      id: 'destination-avatar',
+      name: '数字形象汇聚',
+      type: 'scatter',
+      coordinateSystem: 'geo',
+      silent: true,
+      zlevel: 20,
+      symbol: (_value, params) => {
+        const avatar = avatarById.get(params.data.avatarId);
+        return avatar ? `image://${avatar.imageDataUrl}` : 'circle';
+      },
+      data: createDestinationAvatarData(),
+    };
+  }
+
+  function avatarSymbolSize() {
+    const count = destinationAvatars.length;
+    const baseSize = count <= 4 ? 52 : count <= 12 ? 42 : count <= 30 ? 32 : count <= 60 ? 25 : 20;
+    return Math.max(18, Math.min(baseSize, container.clientWidth * 0.065));
+  }
+
+  function avatarSymbolOffset(index) {
+    if (index === 0) return [0, -42];
+    const maxRadius = Math.min(175, Math.max(88, container.clientWidth * 0.22));
+    const radius = Math.min(maxRadius, 45 + Math.sqrt(index) * 15);
+    const angle = index * 2.399963 - Math.PI / 2;
+    return [Math.round(Math.cos(angle) * radius), Math.round(Math.sin(angle) * radius - 25)];
+  }
+
+  function createDestinationAvatarData() {
+    const now = Date.now();
+    const size = avatarSymbolSize();
+    return [...destinationAvatars].reverse().map((avatar, index) => ({
+      id: avatar.id,
+      avatarId: avatar.id,
+      name: '信工数字形象',
+      value: CAMPUS_COORDS,
+      symbolSize: size,
+      symbolOffset: avatarSymbolOffset(index),
+      itemStyle: {
+        opacity: Math.max(0, (avatar.expiresAt - now) / AVATAR_LIFETIME),
+        shadowBlur: 12,
+        shadowColor: 'rgba(45, 226, 255, .5)',
+      },
+    }));
+  }
+
+  function stopDestinationAvatarTimer() {
+    window.clearInterval(destinationAvatarTimer);
+    destinationAvatarTimer = null;
+  }
+
+  function syncDestinationAvatars() {
+    const now = Date.now();
+    destinationAvatars = destinationAvatars.filter((avatar) => avatar.expiresAt > now);
+    if (!destinationAvatars.length) stopDestinationAvatarTimer();
+    chart.setOption({
+      series: [{ id: 'destination-avatar', data: createDestinationAvatarData() }],
+    });
+  }
+
+  function startDestinationAvatarTimer() {
+    if (destinationAvatarTimer) return;
+    destinationAvatarTimer = window.setInterval(syncDestinationAvatars, 10_000);
+  }
+
+  function clearDestinationAvatars() {
+    stopDestinationAvatarTimer();
+    destinationAvatars = [];
+    render();
+  }
+
+  function addDestinationAvatar(imageDataUrl) {
+    const now = Date.now();
+    destinationAvatars.push({
+      id: globalThis.crypto?.randomUUID?.() ?? `avatar-${now}-${Math.random().toString(16).slice(2)}`,
+      imageDataUrl,
+      createdAt: now,
+      expiresAt: now + AVATAR_LIFETIME,
+    });
+    if (destinationAvatars.length > MAX_DESTINATION_AVATARS) {
+      destinationAvatars.splice(0, destinationAvatars.length - MAX_DESTINATION_AVATARS);
+    }
+    startDestinationAvatarTimer();
+    render();
+  }
+
   function render() {
     chart.setOption({
       animationDurationUpdate: reducedMotion ? 0 : 450,
@@ -201,7 +298,7 @@ export function createMapChart(container) {
         select: { disabled: true },
         regions: [{ name: '南海诸岛', itemStyle: { opacity: 0.45 } }],
       },
-      series: [...historySeries(), ...currentSeries(), campusSeries(), demoSeries()],
+      series: [...historySeries(), ...currentSeries(), campusSeries(), demoSeries(), destinationAvatarSeries()],
     }, { replaceMerge: ['series'] });
   }
 
@@ -216,7 +313,10 @@ export function createMapChart(container) {
     setCurrent(record) { currentRecord = record; render(); },
     clearCurrent() { currentRecord = null; bursting = false; render(); },
     setBurst(active) { bursting = active; render(); },
+    addDestinationAvatar,
+    clearDestinationAvatars,
+    getDestinationAvatarCount: () => destinationAvatars.length,
     resize: () => chart.resize(),
-    dispose() { observer.disconnect(); window.removeEventListener('resize', resize); resize.cancel(); chart.dispose(); },
+    dispose() { stopDestinationAvatarTimer(); observer.disconnect(); window.removeEventListener('resize', resize); resize.cancel(); chart.dispose(); },
   };
 }

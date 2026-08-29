@@ -33,6 +33,9 @@ const elements = {
   selectedCoord: document.querySelector('#selected-city-coord'),
   status: document.querySelector('#status-text'),
   adminOverlay: document.querySelector('#admin-overlay'),
+  startupLoading: document.querySelector('#startup-loading'),
+  mapLoading: document.querySelector('#map-loading'),
+  mapLoadingText: document.querySelector('#map-loading-text'),
 };
 
 let appState = APP_STATES.IDLE;
@@ -44,6 +47,12 @@ let activeAvatar = null;
 let chart;
 let tree;
 let avatarController;
+let visualMode = null;
+let viewStage = null;
+let viewButtons = [];
+let activeVisualMode = null;
+let visualLoadToken = 0;
+let visualReady = false;
 
 function setStatus(text) {
   elements.status.textContent = text;
@@ -59,10 +68,52 @@ function setState(nextState) {
   elements.generateButton.disabled = locked || !selectedCity;
   elements.generateText.textContent = nextState === APP_STATES.ANIMATING ? '轨迹生成中…' : '生成我的求学轨迹';
   elements.generateButton.classList.toggle('is-loading', nextState === APP_STATES.ANIMATING);
+  applyVisualMode();
+}
+
+function setVisualLoading(loading, message) {
+  if (message) elements.mapLoadingText.textContent = message;
+  elements.mapLoading.classList.toggle('is-hidden', !loading);
+  elements.mapLoading.setAttribute('aria-busy', String(loading));
+  elements.mapLoading.setAttribute('aria-hidden', String(!loading));
+}
+
+function waitForVisualFrames(delay = 220) {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => window.setTimeout(resolve, delay));
+    });
+  });
+}
+
+async function settleVisualLoading(message) {
+  const token = ++visualLoadToken;
+  setVisualLoading(true, message);
+  await waitForVisualFrames();
+  if (token === visualLoadToken) setVisualLoading(false);
+}
+
+function applyVisualMode() {
+  if (!viewStage) return;
+  const automaticMode = appState === APP_STATES.SELECTING || appState === APP_STATES.ANIMATING ? 'map' : 'tree';
+  const activeMode = visualMode || automaticMode;
+  viewStage.dataset.view = activeMode;
+  viewButtons.forEach((button) => {
+    button.setAttribute('aria-pressed', String(button.dataset.view === activeMode));
+  });
+  if (activeMode === 'map') window.setTimeout(() => chart?.resize(), 100);
+  if (visualReady && activeMode !== activeVisualMode) {
+    settleVisualLoading(activeMode === 'map' ? '正在切换到地图' : '正在切换到树形图');
+  }
+  activeVisualMode = activeMode;
 }
 
 function updateSelectedCity(city) {
   selectedCity = city;
+  if (city) {
+    visualMode = 'map';
+    applyVisualMode();
+  }
   chart?.setSelected(city);
   elements.selectedCard.classList.toggle('is-empty', !city);
   elements.selectedName.textContent = city ? `${city.city} · ${city.province}` : '等待选择生源城市';
@@ -100,6 +151,7 @@ function finishResult() {
   resultController.reset();
   avatarController?.reset();
   chart.clearCurrent();
+  chart.revealHistory();
   citySearch.reset();
   selectedCity = null;
   activeRecord = null;
@@ -171,11 +223,11 @@ async function generateRoute() {
   setState(APP_STATES.ANIMATING);
   setStatus(COPY.animating(city));
   chart.setCurrent(record);
-  chart.setSelected(null);
 
   try {
     await wait(ANIMATION.originDelay + ANIMATION.flightDuration);
     if (token !== flowToken) return;
+    chart.completeFocus();
     chart.setBurst(true);
     triggerArrivalBurst();
     await wait(520);
@@ -192,6 +244,7 @@ async function generateRoute() {
   } catch (error) {
     console.error(error);
     chart.clearCurrent();
+    chart.revealHistory();
     setState(APP_STATES.SELECTING);
     setStatus(COPY.selected(city));
     showToast(`轨迹生成失败：${error.message}`, 'error');
@@ -382,6 +435,18 @@ function initRankingToggle() {
   });
 }
 
+function initViewToggle() {
+  viewStage = document.querySelector('.map-stage');
+  viewButtons = [...document.querySelectorAll('#view-toggle [data-view]')];
+  viewButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      visualMode = button.dataset.view;
+      applyVisualMode();
+    });
+  });
+  applyVisualMode();
+}
+
 function initAmbientCanvas() {
   const canvas = document.querySelector('#ambient-canvas');
   const context = canvas.getContext('2d');
@@ -511,7 +576,6 @@ function initAmbientCanvas() {
 
 chart = createMapChart(document.querySelector('#map-chart'));
 tree = createTree(document.querySelector('#tree-stage'));
-document.querySelector('#map-loading').classList.add('is-hidden');
 refreshData();
 setState(APP_STATES.IDLE);
 
@@ -530,6 +594,24 @@ const admin = initAdmin();
 initFullscreen();
 initRankingToggle();
 initRankingTabs();
+initViewToggle();
+visualReady = true;
+setVisualLoading(true, '正在加载界面');
+const finishInitialLoading = () => {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      setVisualLoading(false);
+      elements.startupLoading.classList.add('is-hidden');
+      elements.startupLoading.setAttribute('aria-busy', 'false');
+      elements.startupLoading.setAttribute('aria-hidden', 'true');
+      document.querySelector('#app').classList.remove('app-booting');
+      chart?.resize();
+      tree?.resize();
+    });
+  });
+};
+if (document.readyState === 'complete') finishInitialLoading();
+else window.addEventListener('load', finishInitialLoading, { once: true });
 
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;

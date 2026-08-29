@@ -24,6 +24,10 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+function displayProvinceName(name) {
+  return String(name || '').replace(/(特别行政区|自治区|省)$/u, '');
+}
+
 function hashString(value) {
   let hash = 2166136261;
   for (let index = 0; index < value.length; index += 1) {
@@ -59,6 +63,15 @@ export function createTree(container) {
   let frame = null;
   let lastTime = performance.now();
   let initialized = false;
+  let networkGroups = [];
+  let networkProvinces = [];
+  let hoveredProvince = null;
+  let hoverAnchor = null;
+  let hitRegions = [];
+  let networkZoom = 1;
+  let networkPanX = 0;
+  let networkPanY = 0;
+  let campusHoverProgress = 0;
 
   // 树干自然弯曲：固定侧弯（-1..1）
   const trunkSway = (Math.random() - 0.5) * 2;
@@ -147,16 +160,17 @@ export function createTree(container) {
     computeTrunk();
   }
 
-  function makeBranch(record) {
+  function makeBranch(record, layout = {}) {
     const rnd = mulberry32(hashString(record.id));
     return {
       id: record.id,
+      province: record.province,
       city: record.city,
-      attachT: 0.08 + rnd() * 0.8,
-      side: rnd() < 0.5 ? -1 : 1,
+      attachT: layout.attachT ?? 0.2,
+      side: layout.side ?? (rnd() < 0.5 ? -1 : 1),
       angle: Math.PI / 6 + rnd() * (Math.PI / 6), // 30°~60°
-      lengthFactor: 0.58 + rnd() * 0.42,
-      curve: 0.2 + rnd() * 0.4,
+      lengthFactor: layout.lengthFactor ?? 0.68,
+      curve: layout.curve ?? 0.12,
       phase: rnd() * Math.PI * 2,
       tipColor: TIP_DOT_COLORS[Math.floor(rnd() * TIP_DOT_COLORS.length)],
       tipSize: 6 + rnd() * 2, // 半径 6~8px → 直径 12~16px
@@ -167,17 +181,56 @@ export function createTree(container) {
     };
   }
 
+  function branchLayout(index, total) {
+    const side = index % 2 === 0 ? -1 : 1;
+    const rank = Math.floor(index / 2);
+    const sideCount = side < 0 ? Math.ceil(total / 2) : Math.floor(total / 2);
+    const progress = sideCount <= 1 ? 0.45 : rank / (sideCount - 1);
+    return {
+      side,
+      attachT: 0.2 + progress * 0.58,
+      angle: 0.58 + progress * 0.22,
+      lengthFactor: 0.78 - progress * 0.2,
+      curve: 0.1 + progress * 0.06,
+    };
+  }
+
   function updateRecords(records) {
     const byId = new Map(branches.map((branch) => [branch.id, branch]));
     const animateNew = initialized && !reducedMotion;
     initialized = true;
-    branches = records.map((record) => {
+    branches = records.map((record, index) => {
       const existing = byId.get(record.id);
-      if (existing) return existing;
+      const layout = branchLayout(index, records.length);
+      if (existing) {
+        Object.assign(existing, layout);
+        return existing;
+      }
       const branch = makeBranch(record);
+      Object.assign(branch, layout);
       branch.growth = animateNew ? 0 : 1;
       return branch;
     });
+
+    const groups = new Map();
+    branches.forEach((branch) => {
+      const key = `${branch.province}::${branch.city}`;
+      if (!groups.has(key)) groups.set(key, { key, province: branch.province, city: branch.city, records: [] });
+      groups.get(key).records.push(branch);
+    });
+    networkGroups = [...groups.values()];
+    const provinces = new Map();
+    networkGroups.forEach((group) => {
+      if (!provinces.has(group.province)) provinces.set(group.province, []);
+      provinces.get(group.province).push(group);
+    });
+    networkProvinces = [...provinces.entries()].map(([name, groups]) => ({
+      name,
+      groups,
+      reveal: 0,
+      countReveal: 0,
+      displayedCount: 0,
+    }));
   }
 
   function bindAvatar(recordId, imageDataUrl) {
@@ -375,6 +428,213 @@ export function createTree(container) {
     context.restore();
   }
 
+  function drawNetwork(now) {
+    const provinceCount = networkProvinces.length;
+    const maxCities = networkProvinces.reduce((max, province) => Math.max(max, province.groups.length), 0);
+    const focusedProvince = networkProvinces.find((province) => province.name === hoveredProvince);
+    const crowdZoom = clamp(
+      1 - Math.max(0, maxCities - 3) * 0.045 - Math.max(0, provinceCount - 10) * 0.018,
+      0.58,
+      1,
+    );
+    const campusFocused = hoveredProvince === '__campus__';
+    campusHoverProgress += ((campusFocused ? 1 : 0) - campusHoverProgress) * 0.14;
+    const targetZoom = clamp(crowdZoom * (campusFocused ? 1.12 : focusedProvince ? 1.22 : 1), 0.7, 1.25);
+    const focusAngle = focusedProvince?.angle ?? 0;
+    const baseRadius = Math.min(width, height) * 0.32;
+    const graphScale = 1.5;
+    const provinceNodeRadius = clamp(11 - Math.max(0, provinceCount - 12) * 0.1, 7.5, 11);
+    const focusRadiusFactor = focusedProvince?.radiusFactor ?? 1;
+    const targetPanX = focusedProvince && hoverAnchor
+      ? (hoverAnchor.x - width / 2) / graphScale - Math.cos(focusAngle) * baseRadius * focusRadiusFactor * targetZoom
+      : 0;
+    const targetPanY = focusedProvince && hoverAnchor
+      ? (hoverAnchor.y - height / 2) / graphScale - Math.sin(focusAngle) * baseRadius * focusRadiusFactor * targetZoom
+      : 0;
+    networkZoom += (targetZoom - networkZoom) * 0.12;
+    networkPanX += (targetPanX - networkPanX) * 0.12;
+    networkPanY += (targetPanY - networkPanY) * 0.12;
+    const centerX = width / 2 + networkPanX;
+    const centerY = height / 2 + networkPanY;
+    const provinceRadius = Math.min(width, height) * 0.32 * networkZoom;
+    const projectPoint = (x, y) => ({
+      x: width / 2 + (x - width / 2) * graphScale,
+      y: height / 2 + (y - height / 2) * graphScale,
+    });
+    const positions = new Map();
+    const cityPositions = new Map();
+    hitRegions = [];
+    const projectedCenter = projectPoint(centerX, centerY);
+    hitRegions.push({ name: '__campus__', x: projectedCenter.x, y: projectedCenter.y, radius: 42 * graphScale });
+
+    context.save();
+    context.translate(width / 2, height / 2);
+    context.scale(graphScale, graphScale);
+    context.translate(-width / 2, -height / 2);
+    context.lineCap = 'round';
+    context.lineJoin = 'round';
+
+    networkProvinces.forEach((province, provinceIndex) => {
+      const baseAngle = -Math.PI / 2 + (Math.PI * 2 * provinceIndex) / Math.max(1, provinceCount);
+      const jitter = Math.min(0.12, (Math.PI * 2 / Math.max(1, provinceCount)) * 0.18);
+      const angle = baseAngle + Math.sin((provinceIndex + 1) * 2.17) * jitter;
+      const radius = provinceRadius * (0.92 + Math.sin((provinceIndex + 1) * 1.63) * 0.07);
+      province.angle = angle;
+      province.radiusFactor = radius / provinceRadius;
+      positions.set(province.name, {
+        x: centerX + Math.cos(angle) * radius,
+        y: centerY + Math.sin(angle) * radius,
+        angle,
+        side: Math.cos(angle) >= 0 ? 1 : -1,
+      });
+      const provincePoint = projectPoint(centerX + Math.cos(angle) * radius, centerY + Math.sin(angle) * radius);
+      hitRegions.push({ name: province.name, x: provincePoint.x, y: provincePoint.y, radius: (provinceNodeRadius + 10) * graphScale });
+    });
+
+    // Draw links first so nodes remain crisp and readable above the network.
+    networkProvinces.forEach((province) => {
+      const provincePosition = positions.get(province.name);
+      const targetReveal = hoveredProvince === province.name ? 1 : 0;
+      province.reveal += (targetReveal - province.reveal) * 0.16;
+      const citySpread = (0.04 + Math.min(0.2, 0.16 + province.groups.length * 0.012)) * province.reveal + 0.025;
+      const expandedRadius = provinceRadius + Math.min(110, Math.min(width, height) * 0.18);
+      const currentCityRadius = provinceRadius + 18 + (expandedRadius - provinceRadius - 18) * province.reveal;
+      province.groups.forEach((group, cityIndex) => {
+        const cityAngle = provincePosition.angle + (cityIndex - (province.groups.length - 1) / 2) * citySpread;
+        const citySide = Math.cos(cityAngle) >= 0 ? 1 : -1;
+        let cityX = centerX + Math.cos(cityAngle) * currentCityRadius;
+        let cityY = centerY + Math.sin(cityAngle) * currentCityRadius;
+        const screenPoint = projectPoint(cityX, cityY);
+        const minX = citySide < 0 ? 84 : 18;
+        const maxX = citySide > 0 ? width - 84 : width - 18;
+        screenPoint.x = clamp(screenPoint.x, minX, maxX);
+        screenPoint.y = clamp(screenPoint.y, 20, height - 20);
+        cityX = width / 2 + (screenPoint.x - width / 2) / graphScale;
+        cityY = height / 2 + (screenPoint.y - height / 2) / graphScale;
+        cityPositions.set(group.key, { x: cityX, y: cityY, side: citySide });
+        const representative = group.records.find((record) => record.image) || group.records[group.records.length - 1];
+        const growth = representative?.growth ?? 1;
+        const alpha = clamp(growth, 0, 1);
+        context.strokeStyle = `rgba(86, 221, 255, ${0.16 + alpha * 0.28})`;
+        context.lineWidth = 0.9;
+        context.beginPath();
+        context.moveTo(cityX, cityY);
+        context.bezierCurveTo((cityX + provincePosition.x) / 2, cityY, (cityX + provincePosition.x) / 2, provincePosition.y, provincePosition.x, provincePosition.y);
+        context.stroke();
+
+      });
+      const representative = province.groups.at(-1)?.records.at(-1);
+      const alpha = clamp(representative?.growth ?? 1, 0, 1);
+      context.strokeStyle = `rgba(45, 226, 255, ${0.2 + alpha * 0.3})`;
+      context.lineWidth = 1.1;
+      context.beginPath();
+      context.moveTo(provincePosition.x, provincePosition.y);
+      context.lineTo(centerX, centerY);
+      context.stroke();
+    });
+
+    // Province and city nodes.
+    networkProvinces.forEach((province) => {
+      const provincePosition = positions.get(province.name);
+      const isHovered = hoveredProvince === province.name;
+      context.fillStyle = isHovered ? 'rgba(45, 226, 255, 0.32)' : 'rgba(45, 226, 255, 0.14)';
+      context.shadowBlur = isHovered ? 18 : 0;
+      context.shadowColor = '#2de2ff';
+      context.beginPath();
+      context.arc(provincePosition.x, provincePosition.y, provinceNodeRadius, 0, Math.PI * 2);
+      context.fill();
+      context.shadowBlur = 0;
+      context.strokeStyle = '#2de2ff';
+      context.lineWidth = 1.5;
+      context.stroke();
+      context.fillStyle = '#dffaff';
+      context.font = '500 10px "PingFang SC", "Microsoft YaHei", sans-serif';
+      context.textAlign = provincePosition.side < 0 ? 'left' : 'right';
+      context.textBaseline = 'middle';
+      const provinceTotal = province.groups.reduce((total, group) => total + group.records.length, 0);
+      province.countReveal += ((campusFocused ? 1 : 0) - province.countReveal) * 0.14;
+      province.displayedCount += (provinceTotal - province.displayedCount) * 0.16;
+      const provinceLabel = displayProvinceName(province.name);
+      const labelX = provincePosition.x + Math.cos(provincePosition.angle) * (provinceNodeRadius + 7);
+      const labelY = provincePosition.y + Math.sin(provincePosition.angle) * (provinceNodeRadius + 7);
+      context.fillText(
+        provinceLabel,
+        labelX,
+        labelY,
+      );
+      if (province.countReveal > 0.01) {
+        context.save();
+        context.globalAlpha = province.countReveal;
+        context.fillStyle = '#9dffd2';
+        context.font = '400 10px "PingFang SC", "Microsoft YaHei", sans-serif';
+        context.textAlign = provincePosition.side < 0 ? 'left' : 'right';
+        const labelWidth = context.measureText(provinceLabel).width;
+        context.fillText(
+          `${Math.round(province.displayedCount)}`,
+          labelX + (provincePosition.side < 0 ? labelWidth + 4 : -labelWidth - 4),
+          labelY,
+        );
+        context.restore();
+      }
+
+      province.groups.forEach((group, cityIndex) => {
+        if (province.reveal < 0.08) return;
+        const cityPosition = cityPositions.get(group.key);
+        const cityX = cityPosition.x;
+        const cityY = cityPosition.y;
+        const representative = group.records.find((record) => record.image) || group.records[group.records.length - 1];
+        const pulse = 0.7 + Math.sin(now * 0.002 + cityIndex) * 0.12;
+        const radius = representative?.image ? 13 : 7;
+        context.fillStyle = representative?.image ? '#071120' : 'rgba(0, 255, 136, 0.72)';
+        context.shadowBlur = 12;
+        context.shadowColor = '#00ff88';
+        context.beginPath();
+        context.arc(cityX, cityY, radius * pulse, 0, Math.PI * 2);
+        context.fill();
+        context.shadowBlur = 0;
+        if (representative?.image) {
+          context.save();
+          context.beginPath();
+          context.arc(cityX, cityY, radius * pulse, 0, Math.PI * 2);
+          context.clip();
+          context.drawImage(representative.image, cityX - radius, cityY - radius, radius * 2, radius * 2);
+          context.restore();
+        }
+        context.fillStyle = '#9dffd2';
+        context.font = '400 10px "PingFang SC", "Microsoft YaHei", sans-serif';
+        context.textAlign = cityPosition.side < 0 ? 'right' : 'left';
+        context.textBaseline = 'middle';
+        const labelAlpha = clamp((province.reveal - 0.08) / 0.42, 0, 1);
+        if (labelAlpha > 0) {
+          context.save();
+          context.globalAlpha = labelAlpha;
+          context.fillText(`${group.city} · ${group.records.length}`, cityX + (cityPosition.side < 0 ? -14 : 14), cityY);
+          context.restore();
+        }
+      });
+    });
+
+    // Destination stays at the visual center of the relationship network.
+    const breath = 0.5 + 0.5 * Math.sin(now * 0.0018);
+    context.fillStyle = `rgba(45, 226, 255, ${0.12 + breath * 0.08})`;
+    context.beginPath();
+    context.arc(centerX, centerY, 34 + breath * 5 + campusHoverProgress * 9, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = '#f6fdff';
+    context.shadowBlur = 24;
+    context.shadowColor = '#2de2ff';
+    context.beginPath();
+    context.arc(centerX, centerY, 11 + campusHoverProgress * 3, 0, Math.PI * 2);
+    context.fill();
+    context.shadowBlur = 0;
+    context.fillStyle = '#edfaff';
+    context.font = '600 12px "PingFang SC", "Microsoft YaHei", sans-serif';
+    context.textAlign = 'center';
+    context.textBaseline = 'top';
+    context.fillText('川农信工 · 雅安', centerX, centerY + 20);
+    context.restore();
+  }
+
   function draw(now) {
     context.clearRect(0, 0, width, height);
     const delta = Math.min(50, now - lastTime);
@@ -388,10 +648,7 @@ export function createTree(container) {
       });
     }
 
-    drawOrbit(now);
-    drawTrunk();
-    drawStream(now);
-    branches.forEach((branch) => drawBranch(branch, now));
+    drawNetwork(now);
   }
 
   function loop(now) {
@@ -409,6 +666,26 @@ export function createTree(container) {
   const observer = new ResizeObserver(() => resize());
   observer.observe(container);
 
+  function updateHover(event) {
+    const rect = canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    const hit = hitRegions.find((region) => Math.hypot(region.x - x, region.y - y) <= region.radius);
+    const next = hit?.name || null;
+    if (next !== hoveredProvince) {
+      hoveredProvince = next;
+      hoverAnchor = hit ? { x: hit.x, y: hit.y } : null;
+      canvas.style.cursor = next ? 'pointer' : 'default';
+    }
+  }
+
+  canvas.addEventListener('pointermove', updateHover, { passive: true });
+  canvas.addEventListener('pointerleave', () => {
+    hoveredProvince = null;
+    hoverAnchor = null;
+    canvas.style.cursor = 'default';
+  });
+
   return {
     updateRecords,
     bindAvatar,
@@ -417,6 +694,7 @@ export function createTree(container) {
       cancelAnimationFrame(frame);
       frame = null;
       observer.disconnect();
+      canvas.removeEventListener('pointermove', updateHover);
       canvas.remove();
     },
   };

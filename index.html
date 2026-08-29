@@ -1,268 +1,337 @@
 <!doctype html>
 <html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#030711" />
-    <meta name="description" content="四川农业大学信息工程学院全国新生生源轨迹可视化系统" />
-    <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
-    <title>全国新生生源轨迹｜四川农业大学信息工程学院</title>
-  </head>
-  <body>
-    <canvas id="ambient-canvas" class="ambient-canvas" aria-hidden="true"></canvas>
-    <div class="scanlines" aria-hidden="true"></div>
 
-    <main id="app" class="app-shell app-enter">
-      <header class="brand-bar glass-panel">
-        <div class="brand-logo brand-logo--school">
-          <img src="./assets/logos/sicau-logo.png" alt="四川农业大学" />
-          <img class="college-logo" src="./assets/logos/xxgc-logo.jpeg" alt="四川农业大学信息工程学院" />
-        </div>
-        <div class="brand-heading">
-          <p class="brand-kicker">SICau · Welcome 2026</p>
-          <h1>全国新生生源轨迹</h1>
-          <p>四川农业大学信息工程学院 <span>· 智启新程 · 码赴山海</span></p>
-        </div>
-        <div class="brand-tools">
-          <div class="clock-wrap">
-            <div id="greeting" class="tech-greeting" aria-hidden="true"></div>
-            <div class="tech-clock">
-              <svg class="tech-clock__orbit" viewBox="0 0 288 74" preserveAspectRatio="none" aria-hidden="true">
-                <rect x="1" y="1" width="286" height="72" rx="9" ry="9" pathLength="99" vector-effect="non-scaling-stroke" />
-              </svg>
-              <time id="current-time" class="tech-clock__matrix" datetime=""></time>
-              <span id="current-date" class="tech-clock__date">--.--.--</span>
-            </div>
-            <button id="fullscreen-btn" class="icon-btn" type="button" aria-label="进入全屏" title="进入全屏">
-              <span aria-hidden="true">⛶</span>
-            </button>
-          </div>
-          <button id="version-trigger" class="version-tag" type="button" aria-label="系统版本">V2.0</button>
-        </div>
-      </header>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#030711" />
+  <meta name="description" content="四川农业大学信息工程学院全国新生生源轨迹可视化系统" />
+  <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
+  <style>
+    /* Keep the first paint stable while the bundled stylesheet loads. */
+    html,
+    body {
+      background: #030711;
+    }
 
-      <section class="main-layout">
-        <aside class="operation-panel glass-panel corner-lines" aria-labelledby="origin-title">
-          <div class="panel-heading">
-            <span class="eyebrow">ORIGIN / 生源地</span>
-            <h2 id="origin-title">从哪里出发？</h2>
-            <p class="panel-intro">选择你的生源城市，让一束光跨越山海抵达雅安。</p>
-          </div>
+    #app.app-booting {
+      opacity: 0;
+      visibility: hidden;
+    }
 
-          <div class="search-field">
-            <label for="city-search">搜索城市或省份</label>
-            <div class="input-shell">
-              <span class="search-icon" aria-hidden="true"></span>
-              <input id="city-search" type="search" placeholder="如：成都 / chengdu / cd" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="city-options" aria-expanded="false" />
-              <button id="clear-search" class="clear-search" type="button" aria-label="清空搜索">×</button>
-            </div>
-            <ul id="city-options" class="search-options" role="listbox" hidden></ul>
-          </div>
+    #startup-loading {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      display: grid;
+      place-content: center;
+      justify-items: center;
+      gap: 12px;
+      color: #8eaec0;
+      background: #030711;
+      font: 12px system-ui, sans-serif;
+    }
 
-          <div id="selected-city" class="selected-card is-empty" aria-live="polite">
-            <span class="selected-marker" aria-hidden="true"></span>
-            <div>
-              <small>当前选择</small>
-              <strong id="selected-city-name">等待选择生源城市</strong>
-              <span id="selected-city-coord">请选择搜索候选项</span>
-            </div>
-          </div>
+    #startup-loading p {
+      margin: 0;
+      letter-spacing: .1em;
+    }
 
-          <button id="generate-btn" class="primary-btn" type="button" disabled>
-            <span class="btn-glow" aria-hidden="true"></span>
-            <span id="generate-btn-text">生成我的求学轨迹</span>
-            <span class="btn-arrow" aria-hidden="true">→</span>
-          </button>
-          <p class="search-hint"><span aria-hidden="true">⌘</span> 支持中文 / 拼音 / 首字母搜索</p>
+    #startup-loading .loading-ring {
+      width: 34px;
+      height: 34px;
+      border: 2px solid rgba(45, 226, 255, .13);
+      border-top-color: #2de2ff;
+      border-radius: 50%;
+      animation: startup-spin .9s linear infinite;
+    }
 
-          <div class="destination-card">
-            <div class="destination-pulse" aria-hidden="true"></div>
-            <div>
-              <small>DESTINATION</small>
-              <strong>川农信工 · 雅安</strong>
-              <span>新康路 46 号 · 第四教学楼</span>
-            </div>
-          </div>
-        </aside>
+    @keyframes startup-spin {
+      to {
+        transform: rotate(1turn);
+      }
+    }
+  </style>
+  <title>全国新生生源轨迹｜四川农业大学信息工程学院</title>
+</head>
 
-        <section class="map-stage glass-panel" aria-label="全国生源轨迹地图">
-          <div class="map-meta">
-            <span><i class="legend-dot legend-dot--history"></i>历史轨迹</span>
-            <span><i class="legend-dot legend-dot--current"></i>当前轨迹</span>
-            <span><i class="legend-dot legend-dot--campus"></i>雅安校区</span>
-          </div>
-          <div class="map-corner map-corner--tl" aria-hidden="true"></div>
-          <div class="map-corner map-corner--br" aria-hidden="true"></div>
-          <div id="map-loading" class="map-loading">
-            <span class="loading-ring" aria-hidden="true"></span>
-            <p>正在载入全国地图</p>
-          </div>
-          <div id="map-chart" class="map-chart"></div>
-          <div id="tree-stage" class="tree-stage"></div>
-          <div id="arrival-burst" class="arrival-burst" aria-hidden="true"></div>
+<body>
+  <canvas id="ambient-canvas" class="ambient-canvas" aria-hidden="true"></canvas>
+  <div class="scanlines" aria-hidden="true"></div>
+  <div id="startup-loading" class="startup-loading" aria-live="polite" aria-busy="true">
+    <span class="loading-ring" aria-hidden="true"></span>
+    <p>正在加载界面</p>
+  </div>
 
-          <article id="result-card" class="result-card" role="dialog" aria-modal="true" aria-labelledby="result-title" hidden>
-            <div class="result-halo" aria-hidden="true"></div>
-            <span class="result-label">ARRIVAL CONFIRMED</span>
-            <h2 id="result-title">欢迎抵达川农信工</h2>
-            <div class="route-summary">
-              <div><small>出发地</small><strong id="result-origin">—</strong></div>
-              <span class="route-arrow" aria-hidden="true">→</span>
-              <div><small>目的地</small><strong>川农信工 · 雅安校区</strong></div>
-            </div>
-            <div class="distance-value"><span>约</span><strong id="result-distance">0</strong><span>公里 · 直线距离</span></div>
-            <p id="result-message" class="result-message"></p>
-            <div id="result-avatar-summary" class="result-avatar-summary" hidden>
-              <img id="result-avatar-image" alt="本次生成的数字形象" />
-              <div><small>你的数字形象已就位</small><strong>已绑定至雅安终点</strong></div>
-            </div>
-            <div id="result-choice-actions" class="result-choice-actions">
-              <button id="result-ai-btn" class="result-action result-action--ai" type="button"><span>AI</span>生成 AI 数字形象</button>
-              <button id="result-manual-btn" class="result-action" type="button"><span>◆</span>简单捏脸</button>
-              <button id="finish-btn" class="result-action result-action--ghost" type="button">直接完成 · <span id="result-countdown">20</span>s</button>
-            </div>
-            <div id="result-complete-actions" class="result-complete-actions" hidden>
-              <button id="result-download-btn" class="result-action" type="button">下载头像 PNG</button>
-              <button id="result-avatar-finish-btn" class="primary-btn result-finish" type="button">完成本次打卡 · <span id="result-avatar-countdown">20</span>s</button>
-            </div>
-          </article>
-        </section>
-
-        <aside class="stats-panel glass-panel corner-lines" aria-labelledby="stats-title">
-          <div class="panel-heading stats-heading">
-            <span class="eyebrow">LIVE DATA / 实时汇聚</span>
-            <h2 id="stats-title">新生足迹总览</h2>
-            <button id="ranking-toggle" class="text-btn" type="button" aria-expanded="false">查看排行</button>
-          </div>
-          <div class="main-stat">
-            <span>累计打卡</span>
-            <strong id="total-count" data-value="0">0</strong>
-            <em>位新同学</em>
-          </div>
-          <div class="stat-grid">
-            <div><span>覆盖省份</span><strong id="province-count" data-value="0">0</strong><small>个</small></div>
-            <div><span>生源城市</span><strong id="city-count" data-value="0">0</strong><small>座</small></div>
-          </div>
-          <section id="ranking-section" class="ranking-section">
-            <div class="ranking-tabs" role="tablist" aria-label="排行类型">
-              <button class="ranking-tab is-active" type="button" role="tab" aria-selected="true" data-ranking="city">城市</button>
-              <button class="ranking-tab" type="button" role="tab" aria-selected="false" data-ranking="province">省份</button>
-            </div>
-            <div class="section-title"><span id="ranking-title">生源城市排行</span><small>人数</small></div>
-            <ol id="city-ranking" class="ranking-list"></ol>
-            <ol id="province-ranking" class="ranking-list" hidden></ol>
-          </section>
-          <div class="latest-card">
-            <span class="live-dot" aria-hidden="true"></span>
-            <div><small>最新抵达</small><strong id="latest-city">等待第一束光</strong></div>
-          </div>
-          <p class="privacy-note">仅记录城市信息，不收集任何个人身份数据</p>
-        </aside>
-      </section>
-
-      <footer class="status-bar glass-panel">
-        <span class="status-signal" aria-hidden="true"></span>
-        <p id="status-text" aria-live="polite">五湖四海萌新，齐聚信工山海</p>
-        <span id="record-badge">本机记录 0 条</span>
-      </footer>
-    </main>
-
-    <div id="toast-region" class="toast-region" role="status" aria-live="polite"></div>
-
-    <div id="admin-overlay" class="modal-overlay" hidden>
-      <section class="admin-panel glass-panel" role="dialog" aria-modal="true" aria-labelledby="admin-title">
-        <header><div><span class="eyebrow">LOCAL CONSOLE</span><h2 id="admin-title">现场数据管理</h2></div><button id="admin-close" class="icon-btn" type="button" aria-label="关闭管理面板">×</button></header>
-        <div class="admin-count"><span>当前本地记录</span><strong id="admin-record-count">0</strong><small>条</small></div>
-        <p id="storage-warning" class="warning-text" hidden></p>
-        <div class="admin-actions">
-          <button id="undo-btn" type="button">↶ 撤销最后一条</button>
-          <button id="export-btn" type="button">⇩ 导出 JSON 备份</button>
-          <label class="file-btn" for="import-file">⇧ 导入 JSON 覆盖</label>
-          <input id="import-file" type="file" accept="application/json,.json" hidden />
-          <button id="clear-records-btn" class="danger-btn" type="button">清空全部记录</button>
-        </div>
-        <p class="admin-tip">数据只保存在当前浏览器。建议活动期间定时导出备份。</p>
-      </section>
-    </div>
-
-    <section id="avatar-modal" class="avatar-modal" hidden>
-      <div class="avatar-dialog glass-panel" role="dialog" aria-modal="true" aria-labelledby="avatar-title">
-        <header class="avatar-header">
-          <div>
-            <span class="eyebrow">DIGITAL IDENTITY / 数字形象</span>
-            <h2 id="avatar-title">创建你的信工数字形象</h2>
-            <p id="avatar-subtitle">本次头像仅保留在当前页面，流程结束后自动清除</p>
-          </div>
-          <button id="avatar-close" class="icon-btn" type="button" aria-label="关闭头像制作">×</button>
-        </header>
-
-        <div class="avatar-layout">
-          <div class="avatar-preview" id="avatar-preview">
-            <div id="avatar-placeholder" class="avatar-placeholder">
-              <span class="avatar-placeholder-icon" aria-hidden="true">◇</span>
-              <strong>数字形象舱</strong>
-              <small>等待载入基础形象</small>
-            </div>
-            <video id="avatar-video" autoplay muted playsinline hidden></video>
-            <img id="avatar-preview-image" alt="数字形象预览" hidden />
-            <div id="avatar-generating" class="avatar-generating" hidden>
-              <span class="loading-ring" aria-hidden="true"></span>
-              <strong>正在生成数字形象</strong>
-              <small>AI 正在处理，请勿关闭页面或重复点击</small>
-            </div>
-            <div class="avatar-scan" aria-hidden="true"></div>
-          </div>
-
-          <div class="avatar-controls">
-            <section data-avatar-stage="capture" class="avatar-stage">
-              <span class="avatar-step">01 / 获取自拍</span>
-              <h3>选择清晰的正面照片</h3>
-              <p>照片会先在本机裁剪压缩，再由本地服务安全转发至百度 AI。</p>
-              <div class="capture-actions">
-                <button id="avatar-camera-btn" type="button">摄像头拍照</button>
-                <label for="avatar-file">选择本地照片</label>
-                <input id="avatar-file" type="file" accept="image/jpeg,image/png" hidden />
-              </div>
-              <button id="avatar-take-photo" class="secondary-wide" type="button" hidden>拍下当前画面</button>
-              <div id="avatar-consent-wrap" class="avatar-consent" hidden>
-                <p>照片将发送至百度 AI，用于生成本次动漫头像。系统不会保存原始照片，完成或退出后将自动清除。</p>
-                <label><input id="avatar-consent" type="checkbox" /> 我已了解并同意本次照片处理</label>
-              </div>
-              <p id="avatar-error" class="avatar-error" role="alert" hidden></p>
-              <div id="avatar-error-actions" class="avatar-error-actions" hidden>
-                <button id="avatar-retry" type="button">重试</button>
-                <button id="avatar-use-manual" type="button">改用简单捏脸</button>
-              </div>
-            </section>
-
-            <section data-avatar-stage="editing" class="avatar-stage" hidden>
-              <span class="avatar-step">02 / 轻量定制</span>
-              <h3>装配你的科技身份</h3>
-              <div id="manual-avatar-section" class="avatar-option-section">
-                <label>基础形象</label>
-                <div id="manual-avatar-grid" class="manual-avatar-grid"></div>
-              </div>
-              <div class="avatar-option-section">
-                <label>科技主题</label>
-                <div id="avatar-theme-options" class="theme-options"></div>
-              </div>
-              <div class="avatar-option-section">
-                <label>科技配件</label>
-                <div id="avatar-accessory-options" class="accessory-options"></div>
-              </div>
-              <p id="avatar-compose-error" class="avatar-error" role="alert" hidden></p>
-            </section>
-          </div>
-        </div>
-
-        <footer class="avatar-actions">
-          <button id="avatar-cancel" class="avatar-secondary-btn" type="button">返回打卡结果</button>
-          <button id="avatar-generate" class="primary-btn avatar-primary-btn" type="button" disabled>开始生成</button>
-          <button id="avatar-complete" class="primary-btn avatar-primary-btn" type="button" hidden>完成并绑定终点</button>
-        </footer>
+  <main id="app" class="app-shell app-enter app-booting">
+    <header class="brand-bar glass-panel">
+      <div class="brand-logo brand-logo--school">
+        <img src="./assets/logos/sicau-logo.png" alt="四川农业大学" />&nbsp;
+        <img class="college-logo" src="./assets/logos/xxgc-logo.jpeg" alt="四川农业大学信息工程学院" />
+        <span class="studio-credit">Provided by ACU工作室</span>
       </div>
+      <div class="brand-heading">
+        <p class="brand-kicker">SICau · Welcome 2026</p>
+        <h1>全国新生生源轨迹</h1>
+        <p>四川农业大学信息工程学院 <span>· 智启新程 · 码赴山海</span></p>
+      </div>
+      <div class="brand-tools">
+        <div class="clock-wrap">
+          <div id="greeting" class="tech-greeting" aria-hidden="true"></div>
+          <div class="tech-clock">
+            <svg class="tech-clock__orbit" viewBox="0 0 288 74" preserveAspectRatio="none" aria-hidden="true">
+              <rect x="1" y="1" width="286" height="72" rx="9" ry="9" pathLength="99"
+                vector-effect="non-scaling-stroke" />
+            </svg>
+            <time id="current-time" class="tech-clock__matrix" datetime=""></time>
+            <span id="current-date" class="tech-clock__date">--.--.--</span>
+          </div>
+          <button id="fullscreen-btn" class="icon-btn" type="button" aria-label="进入全屏" title="进入全屏">
+            <span aria-hidden="true">⛶</span>
+          </button>
+        </div>
+        <button id="version-trigger" class="version-tag" type="button" aria-label="系统版本">V3.0</button>
+      </div>
+    </header>
+
+    <section class="main-layout">
+      <aside class="operation-panel glass-panel corner-lines" aria-labelledby="origin-title">
+        <div class="panel-heading">
+          <span class="eyebrow">ORIGIN / 生源地</span>
+          <h2 id="origin-title">从哪里出发？</h2>
+          <p class="panel-intro">选择你的生源城市，让一束光跨越山海抵达雅安。</p>
+        </div>
+
+        <div class="search-field">
+          <label for="city-search">搜索城市或省份</label>
+          <div class="input-shell">
+            <span class="search-icon" aria-hidden="true"></span>
+            <input id="city-search" type="search" placeholder="如：成都 / chengdu / cd" autocomplete="off" role="combobox"
+              aria-autocomplete="list" aria-controls="city-options" aria-expanded="false" />
+            <button id="clear-search" class="clear-search" type="button" aria-label="清空搜索">×</button>
+          </div>
+          <ul id="city-options" class="search-options" role="listbox" hidden></ul>
+        </div>
+
+        <div id="selected-city" class="selected-card is-empty" aria-live="polite">
+          <span class="selected-marker" aria-hidden="true"></span>
+          <div>
+            <small>当前选择</small>
+            <strong id="selected-city-name">等待选择生源城市</strong>
+            <span id="selected-city-coord">请选择搜索候选项</span>
+          </div>
+        </div>
+
+        <button id="generate-btn" class="primary-btn" type="button" disabled>
+          <span class="btn-glow" aria-hidden="true"></span>
+          <span id="generate-btn-text">生成我的求学轨迹</span>
+          <span class="btn-arrow" aria-hidden="true">→</span>
+        </button>
+        <p class="search-hint"><span aria-hidden="true">⌘</span> 支持中文 / 拼音 / 首字母搜索</p>
+
+        <div class="destination-card">
+          <div class="destination-pulse" aria-hidden="true"></div>
+          <div>
+            <small>DESTINATION</small>
+            <strong>川农信工 · 雅安</strong>
+            <span>新康路 46 号 · 第四教学楼</span>
+          </div>
+        </div>
+      </aside>
+
+      <section class="map-stage glass-panel" aria-label="全国生源轨迹地图">
+        <div class="map-meta">
+          <span><i class="legend-dot legend-dot--history"></i>历史轨迹</span>
+          <span><i class="legend-dot legend-dot--current"></i>当前轨迹</span>
+          <span><i class="legend-dot legend-dot--campus"></i>雅安校区</span>
+        </div>
+        <div id="view-toggle" class="view-toggle" role="group" aria-label="视图切换">
+          <button class="view-toggle__button" type="button" data-view="map" aria-pressed="false">地图</button>
+          <button class="view-toggle__button" type="button" data-view="tree" aria-pressed="false">树形图</button>
+        </div>
+        <div class="map-corner map-corner--tl" aria-hidden="true"></div>
+        <div class="map-corner map-corner--br" aria-hidden="true"></div>
+        <div id="map-loading" class="map-loading" aria-live="polite" aria-busy="true">
+          <span class="loading-ring" aria-hidden="true"></span>
+          <p id="map-loading-text">正在载入全国地图</p>
+        </div>
+        <div id="map-chart" class="map-chart"></div>
+        <div id="tree-stage" class="tree-stage"></div>
+        <div id="arrival-burst" class="arrival-burst" aria-hidden="true"></div>
+
+        <article id="result-card" class="result-card" role="dialog" aria-modal="true" aria-labelledby="result-title"
+          hidden>
+          <div class="result-halo" aria-hidden="true"></div>
+          <span class="result-label">ARRIVAL CONFIRMED</span>
+          <h2 id="result-title">欢迎抵达川农信工</h2>
+          <div class="route-summary">
+            <div><small>出发地</small><strong id="result-origin">—</strong></div>
+            <span class="route-arrow" aria-hidden="true">→</span>
+            <div><small>目的地</small><strong>川农信工 · 雅安校区</strong></div>
+          </div>
+          <div class="distance-value"><span>约</span><strong id="result-distance">0</strong><span>公里 · 直线距离</span></div>
+          <p id="result-message" class="result-message"></p>
+          <div id="result-avatar-summary" class="result-avatar-summary" hidden>
+            <img id="result-avatar-image" alt="本次生成的数字形象" />
+            <div><small>你的数字形象已就位</small><strong>已绑定至雅安终点</strong></div>
+          </div>
+          <div id="result-choice-actions" class="result-choice-actions">
+            <button id="result-ai-btn" class="result-action result-action--ai" type="button"><span>AI</span>生成 AI
+              数字形象</button>
+            <button id="result-manual-btn" class="result-action" type="button"><span>◆</span>简单捏脸</button>
+            <button id="finish-btn" class="result-action result-action--ghost" type="button">直接完成 · <span
+                id="result-countdown">20</span>s</button>
+          </div>
+          <div id="result-complete-actions" class="result-complete-actions" hidden>
+            <button id="result-download-btn" class="result-action" type="button">下载头像 PNG</button>
+            <button id="result-avatar-finish-btn" class="primary-btn result-finish" type="button">完成本次打卡 · <span
+                id="result-avatar-countdown">20</span>s</button>
+          </div>
+        </article>
+      </section>
+
+      <aside class="stats-panel glass-panel corner-lines" aria-labelledby="stats-title">
+        <div class="panel-heading stats-heading">
+          <span class="eyebrow">LIVE DATA / 实时汇聚</span>
+          <h2 id="stats-title">新生足迹总览</h2>
+          <button id="ranking-toggle" class="text-btn" type="button" aria-expanded="false">查看排行</button>
+        </div>
+        <div class="main-stat">
+          <span>累计打卡</span>
+          <strong id="total-count" data-value="0">0</strong>
+          <em>位新同学</em>
+        </div>
+        <div class="stat-grid">
+          <div><span>覆盖省份</span><strong id="province-count" data-value="0">0</strong><small>个</small></div>
+          <div><span>生源城市</span><strong id="city-count" data-value="0">0</strong><small>座</small></div>
+        </div>
+        <section id="ranking-section" class="ranking-section">
+          <div class="ranking-tabs" role="tablist" aria-label="排行类型">
+            <button class="ranking-tab is-active" type="button" role="tab" aria-selected="true"
+              data-ranking="city">城市</button>
+            <button class="ranking-tab" type="button" role="tab" aria-selected="false"
+              data-ranking="province">省份</button>
+          </div>
+          <div class="section-title"><span id="ranking-title">生源城市排行</span><small>人数</small></div>
+          <ol id="city-ranking" class="ranking-list"></ol>
+          <ol id="province-ranking" class="ranking-list" hidden></ol>
+        </section>
+        <div class="latest-card">
+          <span class="live-dot" aria-hidden="true"></span>
+          <div><small>最新抵达</small><strong id="latest-city">等待第一束光</strong></div>
+        </div>
+        <p class="privacy-note">仅记录城市信息，不收集任何个人身份数据</p>
+      </aside>
     </section>
 
-    <script type="module" src="/src/main.js"></script>
-  </body>
+    <footer class="status-bar glass-panel">
+      <span class="status-signal" aria-hidden="true"></span>
+      <p id="status-text" aria-live="polite">五湖四海萌新，齐聚信工山海</p>
+      <span id="record-badge">本机记录 0 条</span>
+    </footer>
+  </main>
+
+  <div id="toast-region" class="toast-region" role="status" aria-live="polite"></div>
+
+  <div id="admin-overlay" class="modal-overlay" hidden>
+    <section class="admin-panel glass-panel" role="dialog" aria-modal="true" aria-labelledby="admin-title">
+      <header>
+        <div><span class="eyebrow">LOCAL CONSOLE</span>
+          <h2 id="admin-title">现场数据管理</h2>
+        </div><button id="admin-close" class="icon-btn" type="button" aria-label="关闭管理面板">×</button>
+      </header>
+      <div class="admin-count"><span>当前本地记录</span><strong id="admin-record-count">0</strong><small>条</small></div>
+      <p id="storage-warning" class="warning-text" hidden></p>
+      <div class="admin-actions">
+        <button id="undo-btn" type="button">↶ 撤销最后一条</button>
+        <button id="export-btn" type="button">⇩ 导出 JSON 备份</button>
+        <label class="file-btn" for="import-file">⇧ 导入 JSON 覆盖</label>
+        <input id="import-file" type="file" accept="application/json,.json" hidden />
+        <button id="clear-records-btn" class="danger-btn" type="button">清空全部记录</button>
+      </div>
+      <p class="admin-tip">数据只保存在当前浏览器。建议活动期间定时导出备份。</p>
+    </section>
+  </div>
+
+  <section id="avatar-modal" class="avatar-modal" hidden>
+    <div class="avatar-dialog glass-panel" role="dialog" aria-modal="true" aria-labelledby="avatar-title">
+      <header class="avatar-header">
+        <div>
+          <span class="eyebrow">DIGITAL IDENTITY / 数字形象</span>
+          <h2 id="avatar-title">创建你的信工数字形象</h2>
+          <p id="avatar-subtitle">本次头像仅保留在当前页面，流程结束后自动清除</p>
+        </div>
+        <button id="avatar-close" class="icon-btn" type="button" aria-label="关闭头像制作">×</button>
+      </header>
+
+      <div class="avatar-layout">
+        <div class="avatar-preview" id="avatar-preview">
+          <div id="avatar-placeholder" class="avatar-placeholder">
+            <span class="avatar-placeholder-icon" aria-hidden="true">◇</span>
+            <strong>数字形象舱</strong>
+            <small>等待载入基础形象</small>
+          </div>
+          <video id="avatar-video" autoplay muted playsinline hidden></video>
+          <img id="avatar-preview-image" alt="数字形象预览" hidden />
+          <div id="avatar-generating" class="avatar-generating" hidden>
+            <span class="loading-ring" aria-hidden="true"></span>
+            <strong>正在生成数字形象</strong>
+            <small>AI 正在处理，请勿关闭页面或重复点击</small>
+          </div>
+          <div class="avatar-scan" aria-hidden="true"></div>
+        </div>
+
+        <div class="avatar-controls">
+          <section data-avatar-stage="capture" class="avatar-stage">
+            <span class="avatar-step">01 / 获取自拍</span>
+            <h3>选择清晰的正面照片</h3>
+            <p>照片会先在本机裁剪压缩，再由本地服务安全转发至百度 AI。</p>
+            <div class="capture-actions">
+              <button id="avatar-camera-btn" type="button">摄像头拍照</button>
+              <label for="avatar-file">选择本地照片</label>
+              <input id="avatar-file" type="file" accept="image/jpeg,image/png" hidden />
+            </div>
+            <button id="avatar-take-photo" class="secondary-wide" type="button" hidden>拍下当前画面</button>
+            <div id="avatar-consent-wrap" class="avatar-consent" hidden>
+              <p>照片将发送至百度 AI，用于生成本次动漫头像。系统不会保存原始照片，完成或退出后将自动清除。</p>
+              <label><input id="avatar-consent" type="checkbox" /> 我已了解并同意本次照片处理</label>
+            </div>
+            <p id="avatar-error" class="avatar-error" role="alert" hidden></p>
+            <div id="avatar-error-actions" class="avatar-error-actions" hidden>
+              <button id="avatar-retry" type="button">重试</button>
+              <button id="avatar-use-manual" type="button">改用简单捏脸</button>
+            </div>
+          </section>
+
+          <section data-avatar-stage="editing" class="avatar-stage" hidden>
+            <span class="avatar-step">02 / 轻量定制</span>
+            <h3>装配你的科技身份</h3>
+            <div id="manual-avatar-section" class="avatar-option-section">
+              <label>基础形象</label>
+              <div id="manual-avatar-grid" class="manual-avatar-grid"></div>
+            </div>
+            <div class="avatar-option-section">
+              <label>科技主题</label>
+              <div id="avatar-theme-options" class="theme-options"></div>
+            </div>
+            <div class="avatar-option-section">
+              <label>科技配件</label>
+              <div id="avatar-accessory-options" class="accessory-options"></div>
+            </div>
+            <p id="avatar-compose-error" class="avatar-error" role="alert" hidden></p>
+          </section>
+        </div>
+      </div>
+
+      <footer class="avatar-actions">
+        <button id="avatar-cancel" class="avatar-secondary-btn" type="button">返回打卡结果</button>
+        <button id="avatar-generate" class="primary-btn avatar-primary-btn" type="button" disabled>开始生成</button>
+        <button id="avatar-complete" class="primary-btn avatar-primary-btn" type="button" hidden>完成并绑定终点</button>
+      </footer>
+    </div>
+  </section>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+
 </html>

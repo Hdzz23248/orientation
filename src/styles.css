@@ -118,6 +118,33 @@ label:focus-visible {
 .app-enter {
   animation: appEnter 0.85s ease both;
 }
+.app-shell.app-booting {
+  opacity: 0;
+  visibility: hidden;
+  animation: none;
+}
+.startup-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+  background: #030711;
+  transition: opacity 0.35s ease, visibility 0.35s ease;
+}
+.startup-loading.is-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+.startup-loading p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+}
 @keyframes appEnter {
   from {
     opacity: 0;
@@ -182,6 +209,14 @@ label:focus-visible {
     monospace;
   letter-spacing: 0.22em;
   text-transform: uppercase;
+}
+.studio-credit {
+  flex: 0 0 auto;
+  margin-left: clamp(6px, 0.6vw, 10px);
+  color: rgba(188, 234, 245, 0.72);
+  font: 500 9px/1.1 "PingFang SC", "Microsoft YaHei", sans-serif;
+  letter-spacing: 0.18em;
+  white-space: nowrap;
 }
 .brand-heading h1 {
   position: relative;
@@ -901,9 +936,7 @@ label:focus-visible {
   opacity: 1;
   transition: opacity 0.6s ease;
   pointer-events: none;
-  background:
-    radial-gradient(60% 45% at 50% 38%, rgba(0, 212, 255, 0.08), transparent 70%),
-    radial-gradient(42% 32% at 50% 44%, rgba(0, 255, 136, 0.05), transparent 72%);
+  background: transparent;
 }
 .tree-canvas {
   position: absolute;
@@ -939,6 +972,52 @@ body[data-state='animating'] .map-meta {
   display: flex;
   align-items: center;
   gap: 5px;
+}
+.view-toggle {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  z-index: 10;
+  display: inline-flex;
+  gap: 4px;
+}
+.view-toggle__button {
+  min-width: 52px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 5px;
+  color: #7497aa;
+  background: transparent;
+  font: 600 10px ui-monospace, SFMono-Regular, Consolas, monospace;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: color 0.2s, background 0.2s, box-shadow 0.2s;
+}
+.view-toggle__button:hover {
+  color: #eafcff;
+}
+.view-toggle__button[aria-pressed="true"] {
+  color: #03131e;
+  background: var(--color-cyan);
+  box-shadow: 0 0 10px rgba(45, 226, 255, 0.45);
+}
+.map-stage[data-view="map"] .map-chart {
+  opacity: 1;
+  pointer-events: auto;
+}
+.map-stage[data-view="map"] .map-meta {
+  opacity: 1;
+}
+.map-stage[data-view="map"] .tree-stage {
+  opacity: 0;
+}
+.map-stage[data-view="tree"] .map-chart {
+  opacity: 0;
+  pointer-events: none;
+}
+.map-stage[data-view="tree"] .tree-stage {
+  opacity: 1;
+  pointer-events: auto;
 }
 .legend-dot {
   width: 6px;
@@ -2501,6 +2580,37 @@ body[data-state='animating'] .map-meta {
   .latest-card {
     padding: 7px;
   }
+}
+
+:root {
+  --cursor-tech: url('/assets/cursors/tech-cursor.svg') 5 4, auto;
+}
+body {
+  cursor: var(--cursor-tech);
+}
+.map-stage[data-view='map'],
+.map-stage[data-view='map'] .map-chart,
+.map-stage[data-view='map'] .map-chart canvas,
+.map-stage[data-view='map'] .map-chart * {
+  cursor: var(--cursor-tech) !important;
+}
+button,
+a,
+input,
+select,
+textarea,
+label[for],
+[role='button'],
+[role='option'],
+[role='tab'] {
+  cursor: var(--cursor-tech);
+}
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled,
+[aria-disabled='true'] {
+  cursor: not-allowed;
 }
 
 @media (prefers-reduced-motion: reduce) {

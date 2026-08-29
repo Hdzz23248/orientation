@@ -137,7 +137,7 @@ async function drawAccessory(context, accessory, color) {
   layer.height = 768;
   const layerContext = layer.getContext('2d');
   if (accessory === 'glasses') layerContext.drawImage(image, 130, 244, 508, 152);
-  else layerContext.drawImage(image, 92, 106, 584, 584);
+  else layerContext.drawImage(image, 134, 30, 500, 500);
   layerContext.globalCompositeOperation = 'source-in';
   layerContext.fillStyle = color;
   layerContext.fillRect(0, 0, 768, 768);

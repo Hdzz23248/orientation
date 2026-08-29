@@ -11,6 +11,7 @@ import {
 import { aggregateRecords, debounce, prefersReducedMotion } from './utils.js';
 
 const CAMPUS_COORDS = [CAMPUS.longitude, CAMPUS.latitude];
+const DEFAULT_MAP_CENTER = [104, 35.8];
 
 echarts.use([LinesChart, EffectScatterChart, ScatterChart, GeoComponent, TooltipComponent, CanvasRenderer]);
 const DEMO_POINTS = [
@@ -26,9 +27,14 @@ export function createMapChart(container) {
   let selectedCity = null;
   let selectedColor = { r: 255, g: 179, b: 0 };
   let bursting = false;
+  let focusCity = null;
+  let focusStage = 'overview';
+  let focusTimer = null;
+  let focusToken = 0;
   const reducedMotion = prefersReducedMotion();
 
   function historySeries() {
+    if (focusStage !== 'overview') return [];
     const grouped = aggregateRecords(records);
     return [
       {
@@ -54,8 +60,8 @@ export function createMapChart(container) {
           count: item.count,
           lineStyle: {
             color: ROUTE_COLORS[item.colorIndex % ROUTE_COLORS.length],
-            width: Math.min(1 + item.count * 0.16, 2.8),
-            opacity: Math.min(0.2 + item.count * 0.035, 0.58),
+            width: Math.min(0.7 + item.count * 0.1, 1.6),
+            opacity: Math.min(0.07 + item.count * 0.015, 0.2),
           },
         })),
       },
@@ -80,7 +86,8 @@ export function createMapChart(container) {
   }
 
   function currentSeries() {
-    const hasCurrent = Boolean(currentRecord);
+    const hasCurrent = Boolean(currentRecord) && ['focused', 'overview'].includes(focusStage);
+    const showCurrentOrigin = hasCurrent && !selectedCity;
     return [
       {
         id: 'current-route',
@@ -97,7 +104,7 @@ export function createMapChart(container) {
           symbolSize: 7,
           color: '#fff',
         },
-        lineStyle: { color: '#2de2ff', width: 2.6, opacity: 0.95, curveness: 0.26, shadowBlur: 14, shadowColor: '#2de2ff' },
+        lineStyle: { color: '#2de2ff', width: 1.6, opacity: 0.48, curveness: 0.26, shadowBlur: 6, shadowColor: '#2de2ff' },
         data: hasCurrent ? [{ coords: [[currentRecord.longitude, currentRecord.latitude], CAMPUS_COORDS] }] : [],
       },
       {
@@ -121,13 +128,13 @@ export function createMapChart(container) {
           borderRadius: 5,
           padding: [4, 7],
         },
-        data: hasCurrent ? [{ name: currentRecord.city, value: [currentRecord.longitude, currentRecord.latitude] }] : [],
+        data: showCurrentOrigin ? [{ name: currentRecord.city, value: [currentRecord.longitude, currentRecord.latitude] }] : [],
       },
     ];
   }
 
   function selectedSeries() {
-    const hasSelected = Boolean(selectedCity);
+    const hasSelected = Boolean(selectedCity) && (focusStage === 'focused' || focusStage === 'overview');
     const color = `rgb(${selectedColor.r}, ${selectedColor.g}, ${selectedColor.b})`;
     const border = `rgba(${selectedColor.r}, ${selectedColor.g}, ${selectedColor.b}, 0.55)`;
     const value = hasSelected ? [{ value: [selectedCity.longitude, selectedCity.latitude] }] : [];
@@ -177,6 +184,7 @@ export function createMapChart(container) {
   }
 
   function campusSeries() {
+    const visible = focusStage === 'focused' || focusStage === 'overview';
     return {
       id: 'campus-point',
       name: '雅安校区',
@@ -197,11 +205,14 @@ export function createMapChart(container) {
         textShadowBlur: 8,
         textShadowColor: '#2de2ff',
       },
-      data: [{ name: CAMPUS.name, value: CAMPUS_COORDS }],
+      data: visible ? [{ name: CAMPUS.name, value: CAMPUS_COORDS }] : [],
     };
   }
 
   function demoSeries() {
+    if (focusStage !== 'overview') {
+      return { id: 'demo-origins', name: '鑳屾櫙鏄熺偣', type: 'scatter', data: [] };
+    }
     return {
       id: 'demo-origins',
       name: '背景星点',
@@ -215,9 +226,27 @@ export function createMapChart(container) {
     };
   }
 
+  function focusViewport() {
+    if (!focusCity || !['zooming', 'focused', 'clearing'].includes(focusStage)) {
+      return { center: DEFAULT_MAP_CENTER, zoom: 1 };
+    }
+    const center = [
+      (focusCity.longitude + CAMPUS.longitude) / 2,
+      (focusCity.latitude + CAMPUS.latitude) / 2,
+    ];
+    const span = Math.max(
+      Math.abs(focusCity.longitude - CAMPUS.longitude),
+      Math.abs(focusCity.latitude - CAMPUS.latitude) * 1.15,
+      1.8,
+    );
+    return { center, zoom: Math.min(5.2, Math.max(1.15, 10 / span)) };
+  }
+
   function render() {
+    const viewport = focusViewport();
     chart.setOption({
-      animationDurationUpdate: reducedMotion ? 0 : 450,
+      animationDurationUpdate: reducedMotion ? 0 : (focusCity ? 850 : 450),
+      animationEasingUpdate: 'cubicInOut',
       backgroundColor: 'transparent',
       tooltip: {
         trigger: 'item',
@@ -235,13 +264,15 @@ export function createMapChart(container) {
       },
       geo: {
         map: 'china-welcome',
+        center: viewport.center,
+        zoom: viewport.zoom,
         roam: false,
         silent: false,
-        left: '4%',
-        right: '5%',
-        top: '7%',
-        bottom: '5%',
-        aspectScale: 0.86,
+        left: '1%',
+        right: '1%',
+        top: '2%',
+        bottom: '2%',
+        aspectScale: 0.98,
         itemStyle: {
           areaColor: '#081729',
           borderColor: 'rgba(69, 206, 244, .48)',
@@ -261,6 +292,54 @@ export function createMapChart(container) {
     }, { replaceMerge: ['series'] });
   }
 
+  function startFocusSequence(city) {
+    window.clearTimeout(focusTimer);
+    const token = ++focusToken;
+    focusCity = city;
+    focusStage = 'hidden';
+    render();
+
+    focusTimer = window.setTimeout(() => {
+      if (token !== focusToken) return;
+      focusStage = 'zooming';
+      render();
+
+      focusTimer = window.setTimeout(() => {
+        if (token !== focusToken) return;
+        focusStage = 'focused';
+        render();
+      }, 850);
+    }, 100);
+  }
+
+  function completeFocusSequence(city) {
+    window.clearTimeout(focusTimer);
+    const token = ++focusToken;
+    if (city) focusCity = city;
+    focusStage = 'clearing';
+    render();
+
+    focusTimer = window.setTimeout(() => {
+      if (token !== focusToken) return;
+      focusStage = 'restoring';
+      render();
+      focusTimer = window.setTimeout(() => {
+        if (token !== focusToken) return;
+        focusStage = 'overview';
+        focusCity = null;
+        render();
+      }, 850);
+    }, 120);
+  }
+
+  function cancelFocusSequence() {
+    window.clearTimeout(focusTimer);
+    focusToken += 1;
+    focusTimer = null;
+    focusStage = 'overview';
+    focusCity = null;
+  }
+
   render();
   const resize = debounce(() => chart.resize(), ANIMATION.resizeDebounce);
   const observer = new ResizeObserver(resize);
@@ -272,6 +351,7 @@ export function createMapChart(container) {
     setCurrent(record) { currentRecord = record; render(); },
     clearCurrent() { currentRecord = null; bursting = false; render(); },
     setSelected(city) {
+      cancelFocusSequence();
       selectedCity = city;
       if (city) {
         selectedColor = {
@@ -279,12 +359,21 @@ export function createMapChart(container) {
           g: Math.floor(Math.random() * 256),
           b: Math.floor(Math.random() * 256),
         };
+        startFocusSequence(city);
+        return;
       }
       render();
     },
-    clearSelected() { selectedCity = null; render(); },
+    clearSelected() {
+      cancelFocusSequence();
+      selectedCity = null;
+      render();
+    },
+    clearSelectedMarker() { cancelFocusSequence(); selectedCity = null; render(); },
+    revealHistory() { cancelFocusSequence(); render(); },
+    completeFocus() { completeFocusSequence(); },
     setBurst(active) { bursting = active; render(); },
     resize: () => chart.resize(),
-    dispose() { observer.disconnect(); window.removeEventListener('resize', resize); resize.cancel(); chart.dispose(); },
+    dispose() { cancelFocusSequence(); observer.disconnect(); window.removeEventListener('resize', resize); resize.cancel(); chart.dispose(); },
   };
 }

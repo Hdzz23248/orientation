@@ -91,6 +91,7 @@ export function createAvatarController({ onComplete, onCancel }) {
     elements.generate.hidden = editing;
     elements.complete.hidden = !editing;
     elements.manualSection.hidden = source !== 'manual';
+    elements.accessoryOptions.parentElement.hidden = source === 'baidu';
     elements.title.textContent = editing ? '定制你的信工数字形象' : '创建你的 AI 数字形象';
     elements.subtitle.textContent = editing
       ? `${session?.origin || '你的家乡'} → ${session?.campus || '川农信工 · 雅安'}`

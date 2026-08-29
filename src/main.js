@@ -4,6 +4,7 @@ import { createAvatarController } from './avatar-controller.js';
 import { downloadAvatar } from './avatar-image.js';
 import { ANIMATION, APP_STATES, CAMPUS, COPY, ROUTE_COLORS } from './config.js';
 import { createMapChart } from './map-chart.js';
+import { createTree } from './tree.js';
 import {
   appendRecord,
   clearRecords,
@@ -17,6 +18,7 @@ import {
 import {
   createCitySearch,
   createResultController,
+  initRankingTabs,
   showToast,
   triggerArrivalBurst,
   updateStatistics,
@@ -40,6 +42,7 @@ let flowToken = 0;
 let activeRecord = null;
 let activeAvatar = null;
 let chart;
+let tree;
 let avatarController;
 
 function setStatus(text) {
@@ -60,6 +63,7 @@ function setState(nextState) {
 
 function updateSelectedCity(city) {
   selectedCity = city;
+  chart?.setSelected(city);
   elements.selectedCard.classList.toggle('is-empty', !city);
   elements.selectedName.textContent = city ? `${city.city} · ${city.province}` : '等待选择生源城市';
   elements.selectedCoord.textContent = city
@@ -84,6 +88,7 @@ const citySearch = createCitySearch(cities, {
 function refreshData() {
   records = loadRecords();
   chart?.updateHistory(records);
+  tree?.updateRecords(records);
   updateStatistics(records);
   document.querySelector('#undo-btn').disabled = records.length === 0;
   document.querySelector('#export-btn').disabled = records.length === 0;
@@ -130,7 +135,7 @@ avatarController = createAvatarController({
   onComplete: (avatar) => {
     if (!activeRecord) return;
     activeAvatar = avatar;
-    chart.addDestinationAvatar(avatar.imageDataUrl);
+    tree.bindAvatar(activeRecord.id, avatar.imageDataUrl);
     setState(APP_STATES.RESULT);
     setStatus(`数字形象已抵达 · ${activeRecord.city} → 川农信工`);
     resultController.show(activeRecord, avatar);
@@ -166,6 +171,7 @@ async function generateRoute() {
   setState(APP_STATES.ANIMATING);
   setStatus(COPY.animating(city));
   chart.setCurrent(record);
+  chart.setSelected(null);
 
   try {
     await wait(ANIMATION.originDelay + ANIMATION.flightDuration);
@@ -177,6 +183,7 @@ async function generateRoute() {
     records = appendRecord(record);
     chart.updateHistory(records);
     updateStatistics(records);
+    tree.updateRecords(records);
     chart.setBurst(false);
     activeRecord = record;
     setState(APP_STATES.RESULT);
@@ -193,16 +200,98 @@ async function generateRoute() {
 
 elements.generateButton.addEventListener('click', generateRoute);
 
+// 5×7 点阵 LED 字库：每个字符 7 行、每行 5 位，'1' 表示该颗粒点亮
+const LED_FONT = {
+  '0': ['01110', '10001', '10011', '10101', '11001', '10001', '01110'],
+  '1': ['00100', '01100', '00100', '00100', '00100', '00100', '01110'],
+  '2': ['01110', '10001', '00001', '00010', '00100', '01000', '11111'],
+  '3': ['11111', '00010', '00100', '00010', '00001', '10001', '01110'],
+  '4': ['00010', '00110', '01010', '10010', '11111', '00010', '00010'],
+  '5': ['11111', '10000', '11110', '00001', '00001', '10001', '01110'],
+  '6': ['00110', '01000', '10000', '11110', '10001', '10001', '01110'],
+  '7': ['11111', '00001', '00010', '00100', '01000', '01000', '01000'],
+  '8': ['01110', '10001', '10001', '01110', '10001', '10001', '01110'],
+  '9': ['01110', '10001', '10001', '01111', '00001', '00010', '01100'],
+};
+const LED_COLON = ['00', '11', '11', '00', '11', '11', '00'];
+
+function buildLedGlyph(rows, isColon = false) {
+  const glyph = document.createElement('span');
+  glyph.className = 'led-glyph' + (isColon ? ' led-glyph--colon' : '');
+  glyph.style.gridTemplateColumns = `repeat(${rows[0].length}, var(--led-dot))`;
+  for (const row of rows) {
+    for (const ch of row) {
+      const dot = document.createElement('i');
+      dot.className = 'led-dot' + (ch === '1' ? ' is-on' : '');
+      glyph.appendChild(dot);
+    }
+  }
+  return glyph;
+}
+
+function greetingForHour(hour) {
+  if (hour >= 6 && hour < 9) return 'console.log("☀️ 早安，信工新同学");';
+  if (hour >= 9 && hour < 12) return 'git commit -m "早安，新同学"';
+  if (hour >= 12 && hour < 14) return '// 午间小憩，下午继续debug';
+  if (hour >= 14 && hour < 18) return 'echo "🌤️ 下午好 · 欢迎加入信工";';
+  if (hour >= 18) return "return '🌙 晚上好 · 信工网络欢迎你';";
+  return '⚠️ sleep() · 明天再debug';
+}
+
 function initClock() {
-  const time = document.querySelector('#current-time');
+  const clock = document.querySelector('#current-time');
+  const date = document.querySelector('#current-date');
+  const pad = (n) => String(n).padStart(2, '0');
+
   const render = () => {
-    time.textContent = new Intl.DateTimeFormat('zh-CN', {
-      hour12: false, year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', second: '2-digit',
-    }).format(new Date()).replaceAll('/', '.');
+    const now = new Date();
+    clock.setAttribute('datetime', now.toISOString());
+    clock.setAttribute('aria-label', now.toLocaleString('zh-CN'));
+    const glyphs = [];
+    for (const ch of `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`) {
+      glyphs.push(ch === ':' ? buildLedGlyph(LED_COLON, true) : buildLedGlyph(LED_FONT[ch]));
+    }
+    clock.replaceChildren(...glyphs);
+    date.textContent = `${now.getFullYear()}.${pad(now.getMonth() + 1)}.${pad(now.getDate())}`;
   };
+
   render();
   return window.setInterval(render, 1_000);
+}
+
+function initGreeting() {
+  const greeting = document.querySelector('#greeting');
+  let timer = null;
+
+  function typeNext() {
+    const fullText = greetingForHour(new Date().getHours());
+    let index = 0;
+    // 立即重置到可见状态（不走 0.8s 过渡），再从头逐字打字
+    greeting.style.transition = 'none';
+    greeting.classList.remove('is-fading');
+    greeting.textContent = '';
+    void greeting.offsetWidth;
+    greeting.style.transition = '';
+
+    const typeChar = () => {
+      index += 1;
+      greeting.textContent = fullText.slice(0, index);
+      if (index < fullText.length) {
+        timer = setTimeout(typeChar, 80 + Math.random() * 40);
+      } else {
+        // 输出完成后等待 6 秒再淡出
+        timer = setTimeout(() => {
+          greeting.classList.add('is-fading');
+          timer = setTimeout(typeNext, 800);
+        }, 6000);
+      }
+    };
+
+    timer = setTimeout(typeChar, 80 + Math.random() * 40);
+  }
+
+  typeNext();
+  return () => clearTimeout(timer);
 }
 
 function initFullscreen() {
@@ -297,8 +386,17 @@ function initAmbientCanvas() {
   const canvas = document.querySelector('#ambient-canvas');
   const context = canvas.getContext('2d');
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // 极客蓝 / 电光青
+  const COLORS = [
+    { r: 61, g: 123, b: 255 }, // #3D7BFF 极客蓝
+    { r: 75, g: 230, b: 255 }, // #4BE6FF 电光青
+  ];
+
   let particles = [];
+  let binary = [];
   let frame;
+
   function resize() {
     const ratio = Math.min(devicePixelRatio, 2);
     canvas.width = innerWidth * ratio;
@@ -306,36 +404,113 @@ function initAmbientCanvas() {
     canvas.style.width = `${innerWidth}px`;
     canvas.style.height = `${innerHeight}px`;
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
-    const count = Math.min(70, Math.floor((innerWidth * innerHeight) / 28_000));
-    particles = Array.from({ length: count }, () => ({
+
+    // 粒子 150~200 个，缓慢向上飘动
+    const count = Math.min(200, Math.max(150, Math.round((innerWidth * innerHeight) / 16_000)));
+    particles = Array.from({ length: count }, () => {
+      const color = COLORS[Math.random() < 0.5 ? 0 : 1];
+      return {
+        x: Math.random() * innerWidth,
+        y: Math.random() * innerHeight,
+        vx: (Math.random() - 0.5) * 0.18,
+        vy: -(Math.random() * 0.24 + 0.05),
+        size: Math.random() * 1.6 + 0.7,
+        color,
+        alpha: Math.random() * 0.35 + 0.3,
+      };
+    });
+
+    // 二进制雨：0/1 随机飘落，低透明度
+    const binaryCount = Math.min(140, Math.max(90, Math.round(innerWidth / 16)));
+    binary = Array.from({ length: binaryCount }, () => ({
       x: Math.random() * innerWidth,
       y: Math.random() * innerHeight,
-      size: Math.random() * 1.4 + 0.35,
-      speed: Math.random() * 0.08 + 0.025,
-      alpha: Math.random() * 0.35 + 0.08,
+      speed: Math.random() * 0.55 + 0.2,
+      char: Math.random() < 0.5 ? '0' : '1',
+      alpha: Math.random() * 0.22 + 0.42,
     }));
   }
+
   function draw() {
     context.clearRect(0, 0, innerWidth, innerHeight);
-    particles.forEach((particle) => {
-      context.fillStyle = `rgba(69, 210, 255, ${particle.alpha})`;
-      context.beginPath();
-      context.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
-      context.fill();
-      if (!reduceMotion) {
-        particle.y -= particle.speed;
-        if (particle.y < -2) particle.y = innerHeight + 2;
+
+    // 近距粒子连线：半透明细线
+    const linkDist = 140;
+    const linkDist2 = linkDist * linkDist;
+    for (let i = 0; i < particles.length; i++) {
+      const a = particles[i];
+      for (let j = i + 1; j < particles.length; j++) {
+        const b = particles[j];
+        const dx = a.x - b.x;
+        const dy = a.y - b.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < linkDist2) {
+          const t = 1 - Math.sqrt(d2) / linkDist;
+          context.strokeStyle = `rgba(130, 210, 255, ${(t * 0.42).toFixed(3)})`;
+          context.lineWidth = 0.8;
+          context.beginPath();
+          context.moveTo(a.x, a.y);
+          context.lineTo(b.x, b.y);
+          context.stroke();
+        }
       }
+    }
+
+    // 粒子（光晕 + 核心）
+    particles.forEach((p) => {
+      context.fillStyle = `rgba(${p.color.r}, ${p.color.g}, ${p.color.b}, ${(p.alpha * 0.18).toFixed(3)})`;
+      context.beginPath();
+      context.arc(p.x, p.y, p.size * 2.8, 0, Math.PI * 2);
+      context.fill();
+      context.fillStyle = `rgba(${p.color.r}, ${p.color.g}, ${p.color.b}, ${p.alpha})`;
+      context.beginPath();
+      context.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      context.fill();
     });
-    if (!reduceMotion) frame = requestAnimationFrame(draw);
+
+    // 二进制代码雨（叠加在粒子上层，低透明度）
+    context.font = '14px ui-monospace, monospace';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    binary.forEach((d) => {
+      context.fillStyle = `rgba(110, 225, 245, ${d.alpha})`;
+      context.fillText(d.char, d.x, d.y);
+    });
+
+    if (!reduceMotion) {
+      particles.forEach((p) => {
+        p.x += p.vx;
+        p.y += p.vy;
+        if (p.y < -2) {
+          p.y = innerHeight + 2;
+          p.x = Math.random() * innerWidth;
+        }
+        if (p.x < -2) p.x = innerWidth + 2;
+        else if (p.x > innerWidth + 2) p.x = -2;
+      });
+      binary.forEach((d) => {
+        d.y += d.speed;
+        if (d.y > innerHeight + 14) {
+          d.y = -14;
+          d.x = Math.random() * innerWidth;
+          d.char = Math.random() < 0.5 ? '0' : '1';
+        }
+      });
+      frame = requestAnimationFrame(draw);
+    }
   }
+
   resize();
   draw();
   window.addEventListener('resize', resize, { passive: true });
-  return () => { cancelAnimationFrame(frame); window.removeEventListener('resize', resize); };
+  return () => {
+    cancelAnimationFrame(frame);
+    window.removeEventListener('resize', resize);
+  };
 }
 
 chart = createMapChart(document.querySelector('#map-chart'));
+tree = createTree(document.querySelector('#tree-stage'));
 document.querySelector('#map-loading').classList.add('is-hidden');
 refreshData();
 setState(APP_STATES.IDLE);
@@ -349,10 +524,12 @@ if (storageWarning) {
 }
 
 const clockTimer = initClock();
+const stopGreeting = initGreeting();
 const stopAmbient = initAmbientCanvas();
 const admin = initAdmin();
 initFullscreen();
 initRankingToggle();
+initRankingTabs();
 
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
@@ -363,8 +540,10 @@ document.addEventListener('keydown', (event) => {
 
 window.addEventListener('beforeunload', () => {
   window.clearInterval(clockTimer);
+  stopGreeting();
   resultController.reset();
   avatarController.reset();
   stopAmbient();
+  tree.dispose();
   chart.dispose();
 }, { once: true });

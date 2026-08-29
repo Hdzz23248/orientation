@@ -5,9 +5,7 @@ import { CanvasRenderer } from 'echarts/renderers';
 import chinaGeoJSON from './data/china.json';
 import {
   ANIMATION,
-  AVATAR_LIFETIME,
   CAMPUS,
-  MAX_DESTINATION_AVATARS,
   ROUTE_COLORS,
 } from './config.js';
 import { aggregateRecords, debounce, prefersReducedMotion } from './utils.js';
@@ -25,8 +23,8 @@ export function createMapChart(container) {
   const chart = echarts.init(container, null, { renderer: 'canvas' });
   let records = [];
   let currentRecord = null;
-  let destinationAvatars = [];
-  let destinationAvatarTimer = null;
+  let selectedCity = null;
+  let selectedColor = { r: 255, g: 179, b: 0 };
   let bursting = false;
   const reducedMotion = prefersReducedMotion();
 
@@ -128,6 +126,56 @@ export function createMapChart(container) {
     ];
   }
 
+  function selectedSeries() {
+    const hasSelected = Boolean(selectedCity);
+    const color = `rgb(${selectedColor.r}, ${selectedColor.g}, ${selectedColor.b})`;
+    const border = `rgba(${selectedColor.r}, ${selectedColor.g}, ${selectedColor.b}, 0.55)`;
+    const value = hasSelected ? [{ value: [selectedCity.longitude, selectedCity.latitude] }] : [];
+
+    return [
+      {
+        id: 'selected-origin',
+        name: '已选生源地',
+        type: 'effectScatter',
+        coordinateSystem: 'geo',
+        zlevel: 6,
+        rippleEffect: { scale: 7, period: 2, brushType: 'stroke' },
+        symbolSize: 12,
+        itemStyle: { color, shadowBlur: 24, shadowColor: color },
+        data: value,
+      },
+      {
+        id: 'selected-arrow',
+        name: '你的家乡',
+        type: 'scatter',
+        coordinateSystem: 'geo',
+        zlevel: 8,
+        silent: true,
+        symbol: 'path://M-8,-16 L8,-16 L0,0 Z',
+        symbolSize: 22,
+        itemStyle: { color, shadowBlur: 8, shadowColor: color },
+        label: {
+          show: hasSelected,
+          formatter: '你的家乡',
+          position: 'top',
+          distance: 2,
+          color: '#eaf7ff',
+          fontWeight: 700,
+          fontSize: 14,
+          fontFamily: '"PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif',
+          textShadowBlur: 10,
+          textShadowColor: color,
+          backgroundColor: 'rgba(3, 10, 22, .8)',
+          borderColor: border,
+          borderWidth: 1,
+          borderRadius: 6,
+          padding: [5, 10],
+        },
+        data: value,
+      },
+    ];
+  }
+
   function campusSeries() {
     return {
       id: 'campus-point',
@@ -165,95 +213,6 @@ export function createMapChart(container) {
       itemStyle: { color: '#2de2ff', opacity: records.length ? 0 : 0.28, shadowBlur: 8, shadowColor: '#2de2ff' },
       data: records.length ? [] : DEMO_POINTS.map((coords) => ({ value: coords })),
     };
-  }
-
-  function destinationAvatarSeries() {
-    const avatarById = new Map(destinationAvatars.map((avatar) => [avatar.id, avatar]));
-    return {
-      id: 'destination-avatar',
-      name: '数字形象汇聚',
-      type: 'scatter',
-      coordinateSystem: 'geo',
-      silent: true,
-      zlevel: 20,
-      symbol: (_value, params) => {
-        const avatar = avatarById.get(params.data.avatarId);
-        return avatar ? `image://${avatar.imageDataUrl}` : 'circle';
-      },
-      data: createDestinationAvatarData(),
-    };
-  }
-
-  function avatarSymbolSize() {
-    const count = destinationAvatars.length;
-    const baseSize = count <= 4 ? 52 : count <= 12 ? 42 : count <= 30 ? 32 : count <= 60 ? 25 : 20;
-    return Math.max(18, Math.min(baseSize, container.clientWidth * 0.065));
-  }
-
-  function avatarSymbolOffset(index) {
-    if (index === 0) return [0, -42];
-    const maxRadius = Math.min(175, Math.max(88, container.clientWidth * 0.22));
-    const radius = Math.min(maxRadius, 45 + Math.sqrt(index) * 15);
-    const angle = index * 2.399963 - Math.PI / 2;
-    return [Math.round(Math.cos(angle) * radius), Math.round(Math.sin(angle) * radius - 25)];
-  }
-
-  function createDestinationAvatarData() {
-    const now = Date.now();
-    const size = avatarSymbolSize();
-    return [...destinationAvatars].reverse().map((avatar, index) => ({
-      id: avatar.id,
-      avatarId: avatar.id,
-      name: '信工数字形象',
-      value: CAMPUS_COORDS,
-      symbolSize: size,
-      symbolOffset: avatarSymbolOffset(index),
-      itemStyle: {
-        opacity: Math.max(0, (avatar.expiresAt - now) / AVATAR_LIFETIME),
-        shadowBlur: 12,
-        shadowColor: 'rgba(45, 226, 255, .5)',
-      },
-    }));
-  }
-
-  function stopDestinationAvatarTimer() {
-    window.clearInterval(destinationAvatarTimer);
-    destinationAvatarTimer = null;
-  }
-
-  function syncDestinationAvatars() {
-    const now = Date.now();
-    destinationAvatars = destinationAvatars.filter((avatar) => avatar.expiresAt > now);
-    if (!destinationAvatars.length) stopDestinationAvatarTimer();
-    chart.setOption({
-      series: [{ id: 'destination-avatar', data: createDestinationAvatarData() }],
-    });
-  }
-
-  function startDestinationAvatarTimer() {
-    if (destinationAvatarTimer) return;
-    destinationAvatarTimer = window.setInterval(syncDestinationAvatars, 10_000);
-  }
-
-  function clearDestinationAvatars() {
-    stopDestinationAvatarTimer();
-    destinationAvatars = [];
-    render();
-  }
-
-  function addDestinationAvatar(imageDataUrl) {
-    const now = Date.now();
-    destinationAvatars.push({
-      id: globalThis.crypto?.randomUUID?.() ?? `avatar-${now}-${Math.random().toString(16).slice(2)}`,
-      imageDataUrl,
-      createdAt: now,
-      expiresAt: now + AVATAR_LIFETIME,
-    });
-    if (destinationAvatars.length > MAX_DESTINATION_AVATARS) {
-      destinationAvatars.splice(0, destinationAvatars.length - MAX_DESTINATION_AVATARS);
-    }
-    startDestinationAvatarTimer();
-    render();
   }
 
   function render() {
@@ -298,7 +257,7 @@ export function createMapChart(container) {
         select: { disabled: true },
         regions: [{ name: '南海诸岛', itemStyle: { opacity: 0.45 } }],
       },
-      series: [...historySeries(), ...currentSeries(), campusSeries(), demoSeries(), destinationAvatarSeries()],
+      series: [...historySeries(), ...currentSeries(), ...selectedSeries(), campusSeries(), demoSeries()],
     }, { replaceMerge: ['series'] });
   }
 
@@ -312,11 +271,20 @@ export function createMapChart(container) {
     updateHistory(nextRecords) { records = [...nextRecords]; render(); },
     setCurrent(record) { currentRecord = record; render(); },
     clearCurrent() { currentRecord = null; bursting = false; render(); },
+    setSelected(city) {
+      selectedCity = city;
+      if (city) {
+        selectedColor = {
+          r: Math.floor(Math.random() * 256),
+          g: Math.floor(Math.random() * 256),
+          b: Math.floor(Math.random() * 256),
+        };
+      }
+      render();
+    },
+    clearSelected() { selectedCity = null; render(); },
     setBurst(active) { bursting = active; render(); },
-    addDestinationAvatar,
-    clearDestinationAvatars,
-    getDestinationAvatarCount: () => destinationAvatars.length,
     resize: () => chart.resize(),
-    dispose() { stopDestinationAvatarTimer(); observer.disconnect(); window.removeEventListener('resize', resize); resize.cancel(); chart.dispose(); },
+    dispose() { observer.disconnect(); window.removeEventListener('resize', resize); resize.cancel(); chart.dispose(); },
   };
 }

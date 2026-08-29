@@ -132,23 +132,34 @@ function animateNumber(element, target) {
   requestAnimationFrame(tick);
 }
 
-export function updateStatistics(records) {
-  const groups = aggregateRecords(records).sort((a, b) => b.count - a.count || new Date(b.latestAt) - new Date(a.latestAt));
-  animateNumber(document.querySelector('#total-count'), records.length);
-  animateNumber(document.querySelector('#province-count'), new Set(records.map((item) => item.province)).size);
-  animateNumber(document.querySelector('#city-count'), groups.length);
-  document.querySelector('#record-badge').textContent = `本机记录 ${records.length} 条`;
-  document.querySelector('#admin-record-count').textContent = String(records.length);
-  document.querySelector('#latest-city').textContent = records.length ? formatLocation(records.at(-1)) : '等待第一束光';
+function aggregateByProvince(records) {
+  const grouped = new Map();
+  records.forEach((record) => {
+    const current = grouped.get(record.province);
+    if (current) {
+      current.count += 1;
+    } else {
+      grouped.set(record.province, { province: record.province, count: 1 });
+    }
+  });
+  return [...grouped.values()].sort((a, b) => b.count - a.count);
+}
 
-  const ranking = document.querySelector('#city-ranking');
-  ranking.replaceChildren();
-  const max = groups[0]?.count || 1;
-  groups.slice(0, 5).forEach((item, index) => {
+function renderRanking(list, items, nameKey) {
+  list.replaceChildren();
+  const max = items[0]?.count || 1;
+  items.forEach((item, index) => {
     const row = document.createElement('li');
     const head = document.createElement('div');
     const label = document.createElement('span');
-    label.textContent = `${index + 1}. ${item.city}`;
+    if (index < 3) {
+      const medal = document.createElement('em');
+      medal.className = `rank-medal rank-medal--${['gold', 'silver', 'bronze'][index]}`;
+      medal.textContent = String(index + 1);
+      label.append(medal, ` ${item[nameKey]}`);
+    } else {
+      label.textContent = `${index + 1}. ${item[nameKey]}`;
+    }
     const count = document.createElement('strong');
     count.textContent = String(item.count);
     head.append(label, count);
@@ -157,14 +168,70 @@ export function updateStatistics(records) {
     bar.style.width = `${Math.max(14, (item.count / max) * 100)}%`;
     track.append(bar);
     row.append(head, track);
-    ranking.append(row);
+    list.append(row);
   });
-  if (!groups.length) {
+  if (!items.length) {
     const empty = document.createElement('li');
     empty.className = 'ranking-empty';
     empty.textContent = '第一条轨迹，等待你点亮';
-    ranking.append(empty);
+    list.append(empty);
   }
+}
+
+function refreshRankingMore() {
+  const section = document.querySelector('#ranking-section');
+  const cityList = document.querySelector('#city-ranking');
+  const provinceList = document.querySelector('#province-ranking');
+  const active = cityList.hidden ? provinceList : cityList;
+  const hasMore = active.scrollHeight - active.scrollTop - active.clientHeight > 2;
+  section.classList.toggle('has-more', hasMore);
+}
+
+export function updateStatistics(records) {
+  const groups = aggregateRecords(records).sort((a, b) => b.count - a.count || new Date(b.latestAt) - new Date(a.latestAt));
+  const provinceGroups = aggregateByProvince(records);
+  animateNumber(document.querySelector('#total-count'), records.length);
+  animateNumber(document.querySelector('#province-count'), new Set(records.map((item) => item.province)).size);
+  animateNumber(document.querySelector('#city-count'), groups.length);
+  document.querySelector('#record-badge').textContent = `本机记录 ${records.length} 条`;
+  document.querySelector('#admin-record-count').textContent = String(records.length);
+  document.querySelector('#latest-city').textContent = records.length ? formatLocation(records.at(-1)) : '等待第一束光';
+
+  renderRanking(document.querySelector('#city-ranking'), groups, 'city');
+  renderRanking(document.querySelector('#province-ranking'), provinceGroups, 'province');
+  refreshRankingMore();
+}
+
+export function initRankingTabs() {
+  const tabs = [...document.querySelectorAll('.ranking-tab')];
+  const title = document.querySelector('#ranking-title');
+  const lists = {
+    city: document.querySelector('#city-ranking'),
+    province: document.querySelector('#province-ranking'),
+  };
+  const labels = { city: '生源城市排行', province: '生源省份排行' };
+
+  tabs.forEach((tab) => {
+    tab.addEventListener('click', () => {
+      const type = tab.dataset.ranking;
+      tabs.forEach((item) => {
+        const active = item === tab;
+        item.classList.toggle('is-active', active);
+        item.setAttribute('aria-selected', String(active));
+      });
+      Object.entries(lists).forEach(([key, list]) => {
+        list.hidden = key !== type;
+      });
+      title.textContent = labels[type];
+      refreshRankingMore();
+    });
+  });
+
+  Object.values(lists).forEach((list) => {
+    list.addEventListener('scroll', refreshRankingMore, { passive: true });
+  });
+
+  refreshRankingMore();
 }
 
 export function createResultController({ onFinish, onAi, onManual, onDownload }) {

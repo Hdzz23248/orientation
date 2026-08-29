@@ -16,6 +16,7 @@
       <header class="brand-bar glass-panel">
         <div class="brand-logo brand-logo--school">
           <img src="./assets/logos/sicau-logo.png" alt="四川农业大学" />
+          <img class="college-logo" src="./assets/logos/xxgc-logo.jpeg" alt="四川农业大学信息工程学院" />
         </div>
         <div class="brand-heading">
           <p class="brand-kicker">SICau · Welcome 2026</p>
@@ -23,14 +24,20 @@
           <p>四川农业大学信息工程学院 <span>· 智启新程 · 码赴山海</span></p>
         </div>
         <div class="brand-tools">
-          <img class="college-logo" src="./assets/logos/xxgc-logo.png" alt="四川农业大学信息工程学院" />
           <div class="clock-wrap">
-            <time id="current-time">--:--:--</time>
+            <div id="greeting" class="tech-greeting" aria-hidden="true"></div>
+            <div class="tech-clock">
+              <svg class="tech-clock__orbit" viewBox="0 0 288 74" preserveAspectRatio="none" aria-hidden="true">
+                <rect x="1" y="1" width="286" height="72" rx="9" ry="9" pathLength="99" vector-effect="non-scaling-stroke" />
+              </svg>
+              <time id="current-time" class="tech-clock__matrix" datetime=""></time>
+              <span id="current-date" class="tech-clock__date">--.--.--</span>
+            </div>
             <button id="fullscreen-btn" class="icon-btn" type="button" aria-label="进入全屏" title="进入全屏">
               <span aria-hidden="true">⛶</span>
             </button>
           </div>
-          <button id="version-trigger" class="version-tag" type="button" aria-label="系统版本">V1.0</button>
+          <button id="version-trigger" class="version-tag" type="button" aria-label="系统版本">V2.0</button>
         </div>
       </header>
 
@@ -91,6 +98,7 @@
             <p>正在载入全国地图</p>
           </div>
           <div id="map-chart" class="map-chart"></div>
+          <div id="tree-stage" class="tree-stage"></div>
           <div id="arrival-burst" class="arrival-burst" aria-hidden="true"></div>
 
           <article id="result-card" class="result-card" role="dialog" aria-modal="true" aria-labelledby="result-title" hidden>
@@ -136,8 +144,13 @@
             <div><span>生源城市</span><strong id="city-count" data-value="0">0</strong><small>座</small></div>
           </div>
           <section id="ranking-section" class="ranking-section">
-            <div class="section-title"><span>生源城市 TOP 5</span><small>人数</small></div>
+            <div class="ranking-tabs" role="tablist" aria-label="排行类型">
+              <button class="ranking-tab is-active" type="button" role="tab" aria-selected="true" data-ranking="city">城市</button>
+              <button class="ranking-tab" type="button" role="tab" aria-selected="false" data-ranking="province">省份</button>
+            </div>
+            <div class="section-title"><span id="ranking-title">生源城市排行</span><small>人数</small></div>
             <ol id="city-ranking" class="ranking-list"></ol>
+            <ol id="province-ranking" class="ranking-list" hidden></ol>
           </section>
           <div class="latest-card">
             <span class="live-dot" aria-hidden="true"></span>

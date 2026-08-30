@@ -151,18 +151,20 @@ function renderRanking(list, items, nameKey) {
   items.forEach((item, index) => {
     const row = document.createElement('li');
     const head = document.createElement('div');
-    const label = document.createElement('span');
+    const rank = document.createElement('em');
     if (index < 3) {
-      const medal = document.createElement('em');
-      medal.className = `rank-medal rank-medal--${['gold', 'silver', 'bronze'][index]}`;
-      medal.textContent = String(index + 1);
-      label.append(medal, ` ${item[nameKey]}`);
+      rank.className = `rank-medal rank-medal--${['gold', 'silver', 'bronze'][index]}`;
+      rank.textContent = String(index + 1);
     } else {
-      label.textContent = `${index + 1}. ${item[nameKey]}`;
+      rank.className = 'rank-num';
+      rank.textContent = String(index + 1);
     }
+    const name = document.createElement('span');
+    name.className = 'rank-name';
+    name.textContent = item[nameKey];
     const count = document.createElement('strong');
     count.textContent = String(item.count);
-    head.append(label, count);
+    head.append(rank, name, count);
     const track = document.createElement('i');
     const bar = document.createElement('b');
     bar.style.width = `${Math.max(14, (item.count / max) * 100)}%`;
@@ -234,7 +236,7 @@ export function initRankingTabs() {
   refreshRankingMore();
 }
 
-export function createResultController({ onFinish, onAi, onManual, onDownload }) {
+export function createResultController({ onFinish, onAnime, onManual, onDownload }) {
   const card = document.querySelector('#result-card');
   const countdown = document.querySelector('#result-countdown');
   const avatarCountdown = document.querySelector('#result-avatar-countdown');
@@ -275,7 +277,7 @@ export function createResultController({ onFinish, onAi, onManual, onDownload })
 
   document.querySelector('#finish-btn').addEventListener('click', finish);
   document.querySelector('#result-avatar-finish-btn').addEventListener('click', finish);
-  document.querySelector('#result-ai-btn').addEventListener('click', () => enterAvatar(onAi));
+  document.querySelector('#result-anime-btn').addEventListener('click', () => enterAvatar(onAnime));
   document.querySelector('#result-manual-btn').addEventListener('click', () => enterAvatar(onManual));
   document.querySelector('#result-download-btn').addEventListener('click', () => {
     if (activeAvatar) onDownload(activeAvatar.imageDataUrl);

@@ -68,7 +68,7 @@
       <div class="brand-logo brand-logo--school">
         <img src="./assets/logos/sicau-logo.png" alt="四川农业大学" />&nbsp;
         <img class="college-logo" src="./assets/logos/xxgc-logo.jpeg" alt="四川农业大学信息工程学院" />
-        <span class="studio-credit">Provided by ACU工作室</span>
+        <span class="studio-credit">Provided by ACU志合同盟工作室</span>
       </div>
       <div class="brand-heading">
         <p class="brand-kicker">SICau · Welcome 2026</p>
@@ -151,6 +151,9 @@
         </div>
         <div class="map-corner map-corner--tl" aria-hidden="true"></div>
         <div class="map-corner map-corner--br" aria-hidden="true"></div>
+        <button id="map-reset-btn" class="map-reset-btn" type="button" title="恢复默认视图" aria-label="恢复默认视图">
+          <span aria-hidden="true">↺</span>
+        </button>
         <div id="map-loading" class="map-loading" aria-live="polite" aria-busy="true">
           <span class="loading-ring" aria-hidden="true"></span>
           <p id="map-loading-text">正在载入全国地图</p>
@@ -176,8 +179,7 @@
             <div><small>你的数字形象已就位</small><strong>已绑定至雅安终点</strong></div>
           </div>
           <div id="result-choice-actions" class="result-choice-actions">
-            <button id="result-ai-btn" class="result-action result-action--ai" type="button"><span>AI</span>生成 AI
-              数字形象</button>
+            <button id="result-anime-btn" class="result-action result-action--anime" type="button"><span>漫</span>人物动漫化</button>
             <button id="result-manual-btn" class="result-action" type="button"><span>◆</span>简单捏脸</button>
             <button id="finish-btn" class="result-action result-action--ghost" type="button">直接完成 · <span
                 id="result-countdown">20</span>s</button>
@@ -228,10 +230,32 @@
       <span class="status-signal" aria-hidden="true"></span>
       <p id="status-text" aria-live="polite">五湖四海萌新，齐聚信工山海</p>
       <span id="record-badge">本机记录 0 条</span>
+      <button id="admin-entry" class="admin-entry" type="button" title="工作人员后台">后台</button>
     </footer>
   </main>
 
   <div id="toast-region" class="toast-region" role="status" aria-live="polite"></div>
+
+  <div id="password-overlay" class="modal-overlay" hidden>
+    <section class="password-panel glass-panel" role="dialog" aria-modal="true" aria-labelledby="password-title">
+      <header>
+        <div><span class="eyebrow">STAFF ONLY</span>
+          <h2 id="password-title">工作人员验证</h2>
+        </div><button id="password-close" class="icon-btn" type="button" aria-label="关闭">×</button>
+      </header>
+      <p class="password-tip">请输入管理密码进入后台</p>
+      <div class="password-input-wrap">
+        <input id="password-input" type="password" placeholder="请输入密码" autocomplete="off" />
+        <button id="password-toggle" class="password-toggle" type="button" aria-label="查看密码">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7.5 10-7.5S22 12 22 12s-3.5 7.5-10 7.5S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></svg>
+        </button>
+      </div>
+      <p id="password-error" class="warning-text" hidden>密码错误，请重试</p>
+      <div class="password-actions">
+        <button id="password-submit" class="primary-btn" type="button">进入后台</button>
+      </div>
+    </section>
+  </div>
 
   <div id="admin-overlay" class="modal-overlay" hidden>
     <section class="admin-panel glass-panel" role="dialog" aria-modal="true" aria-labelledby="admin-title">
@@ -247,6 +271,7 @@
         <button id="export-btn" type="button">⇩ 导出 JSON 备份</button>
         <label class="file-btn" for="import-file">⇧ 导入 JSON 覆盖</label>
         <input id="import-file" type="file" accept="application/json,.json" hidden />
+        <button id="demo-btn" type="button">👥 生成 150 条演示数据</button>
         <button id="clear-records-btn" class="danger-btn" type="button">清空全部记录</button>
       </div>
       <p class="admin-tip">数据只保存在当前浏览器。建议活动期间定时导出备份。</p>
@@ -293,7 +318,7 @@
             </div>
             <button id="avatar-take-photo" class="secondary-wide" type="button" hidden>拍下当前画面</button>
             <div id="avatar-consent-wrap" class="avatar-consent" hidden>
-              <p>照片将发送至百度 AI，用于生成本次动漫头像。系统不会保存原始照片，完成或退出后将自动清除。</p>
+              <p>照片将发送至云端 AI 服务，用于生成本次数字形象。系统不会保存原始照片，完成或退出后将自动清除。</p>
               <label><input id="avatar-consent" type="checkbox" /> 我已了解并同意本次照片处理</label>
             </div>
             <p id="avatar-error" class="avatar-error" role="alert" hidden></p>

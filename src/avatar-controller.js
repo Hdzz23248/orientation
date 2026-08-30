@@ -34,8 +34,12 @@ export function createAvatarController({ onComplete, onCancel }) {
     complete: document.querySelector('#avatar-complete'),
     manualSection: document.querySelector('#manual-avatar-section'),
     manualGrid: document.querySelector('#manual-avatar-grid'),
+    themeSection: document.querySelector('#avatar-theme-options').parentElement,
     themeOptions: document.querySelector('#avatar-theme-options'),
+    accessorySection: document.querySelector('#avatar-accessory-options').parentElement,
     accessoryOptions: document.querySelector('#avatar-accessory-options'),
+    editingStep: document.querySelector('[data-avatar-stage="editing"] .avatar-step'),
+    editingHeading: document.querySelector('[data-avatar-stage="editing"] h3'),
   };
 
   let stage = 'capture';
@@ -88,11 +92,17 @@ export function createAvatarController({ onComplete, onCancel }) {
       section.hidden = section.dataset.avatarStage !== nextStage;
     });
     const editing = nextStage === 'editing';
+    const isAnime = mode === 'anime';
     elements.generate.hidden = editing;
     elements.complete.hidden = !editing;
     elements.manualSection.hidden = source !== 'manual';
-    elements.accessoryOptions.parentElement.hidden = source === 'baidu';
-    elements.title.textContent = editing ? '定制你的信工数字形象' : '创建你的 AI 数字形象';
+    elements.themeSection.hidden = isAnime;
+    elements.accessorySection.hidden = isAnime;
+    elements.editingStep.textContent = isAnime ? '02 / 生成完成' : '02 / 轻量定制';
+    elements.editingHeading.textContent = isAnime ? '你的动漫形象已生成' : '装配你的科技身份';
+    elements.title.textContent = isAnime
+      ? (editing ? '你的动漫形象已生成' : '人物动漫化')
+      : editing ? '定制你的信工数字形象' : '创建你的 AI 数字形象';
     elements.subtitle.textContent = editing
       ? `${session?.origin || '你的家乡'} → ${session?.campus || '川农信工 · 雅安'}`
       : '照片仅用于本次生成，完成或退出后自动清除';
@@ -211,16 +221,17 @@ export function createAvatarController({ onComplete, onCancel }) {
     clearError();
     setBusy(true);
     try {
+      // 人物动漫化：百度人像动漫化
       baseImageDataUrl = await generateAnimeAvatar(selfieDataUrl);
       selfieDataUrl = null;
       elements.consent.checked = false;
       elements.consentWrap.hidden = true;
-      source = 'baidu';
+      source = 'anime';
+      composedImageDataUrl = baseImageDataUrl;
+      showPreview(baseImageDataUrl);
       showStage('editing');
-      updateOptionStates();
-      await updateComposition();
     } catch (error) {
-      showError(error.message || 'AI 生成失败，请重试或使用简单捏脸', true);
+      showError(error.message || '生成失败，请重试或使用简单捏脸', true);
     } finally {
       setBusy(false);
     }

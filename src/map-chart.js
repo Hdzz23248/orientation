@@ -1,8 +1,9 @@
 import * as echarts from 'echarts/core';
-import { EffectScatterChart, LinesChart, ScatterChart } from 'echarts/charts';
+import { EffectScatterChart, LinesChart, MapChart, ScatterChart } from 'echarts/charts';
 import { GeoComponent, TooltipComponent } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
 import chinaGeoJSON from './data/china.json';
+import chinaCitiesGeoJSON from './data/china-cities.json';
 import {
   ANIMATION,
   CAMPUS,
@@ -12,8 +13,10 @@ import { aggregateRecords, debounce, prefersReducedMotion } from './utils.js';
 
 const CAMPUS_COORDS = [CAMPUS.longitude, CAMPUS.latitude];
 const DEFAULT_MAP_CENTER = [104, 35.8];
+const CITY_DETAIL_ZOOM = 2.5; // 放大到该倍率显示地级市点位
+const CITY_LABEL_ZOOM = 3.5; // 放大到该倍率显示地级市名称
 
-echarts.use([LinesChart, EffectScatterChart, ScatterChart, GeoComponent, TooltipComponent, CanvasRenderer]);
+echarts.use([LinesChart, EffectScatterChart, ScatterChart, MapChart, GeoComponent, TooltipComponent, CanvasRenderer]);
 const DEMO_POINTS = [
   [116.4, 39.9], [121.47, 31.23], [113.28, 23.12], [87.62, 43.79],
   [126.64, 45.75], [91.13, 29.66], [108.95, 34.26], [104.06, 30.66],
@@ -21,6 +24,7 @@ const DEMO_POINTS = [
 
 export function createMapChart(container) {
   echarts.registerMap('china-welcome', chinaGeoJSON);
+  echarts.registerMap('china-cities', chinaCitiesGeoJSON);
   const chart = echarts.init(container, null, { renderer: 'canvas' });
   let records = [];
   let currentRecord = null;
@@ -31,6 +35,10 @@ export function createMapChart(container) {
   let focusStage = 'overview';
   let focusTimer = null;
   let focusToken = 0;
+  let avatarFlyToken = 0;
+  let userCenter = [...DEFAULT_MAP_CENTER];
+  let userZoom = 1;
+  let cityDetailVisible = false;
   const reducedMotion = prefersReducedMotion();
 
   function historySeries() {
@@ -226,9 +234,40 @@ export function createMapChart(container) {
     };
   }
 
+  function cityBoundarySeries(zoom, center) {
+    return {
+      id: 'city-boundaries',
+      type: 'map',
+      map: 'china-cities',
+      center,
+      zoom,
+      left: '1%',
+      right: '1%',
+      top: '2%',
+      bottom: '2%',
+      aspectScale: 0.98,
+      silent: true,
+      roam: false,
+      z: 2,
+      itemStyle: {
+        areaColor: 'transparent',
+        borderColor: 'rgba(110, 231, 255, 0.5)',
+        borderWidth: 0.7,
+      },
+      emphasis: { disabled: true },
+      select: { disabled: true },
+      label: {
+        show: zoom >= CITY_LABEL_ZOOM,
+        color: '#bfe9ff',
+        fontSize: 8,
+        formatter: (params) => params.name,
+      },
+    };
+  }
+
   function focusViewport() {
     if (!focusCity || !['zooming', 'focused', 'clearing'].includes(focusStage)) {
-      return { center: DEFAULT_MAP_CENTER, zoom: 1 };
+      return { center: userCenter, zoom: userZoom };
     }
     const center = [
       (focusCity.longitude + CAMPUS.longitude) / 2,
@@ -266,7 +305,8 @@ export function createMapChart(container) {
         map: 'china-welcome',
         center: viewport.center,
         zoom: viewport.zoom,
-        roam: false,
+        roam: true,
+        scaleLimit: { min: 0.6, max: 5 },
         silent: false,
         left: '1%',
         right: '1%',
@@ -288,7 +328,7 @@ export function createMapChart(container) {
         select: { disabled: true },
         regions: [{ name: '南海诸岛', itemStyle: { opacity: 0.45 } }],
       },
-      series: [...historySeries(), ...currentSeries(), ...selectedSeries(), campusSeries(), demoSeries()],
+      series: [...historySeries(), ...currentSeries(), ...selectedSeries(), campusSeries(), demoSeries(), ...(viewport.zoom >= CITY_DETAIL_ZOOM ? [cityBoundarySeries(viewport.zoom, viewport.center)] : [])],
     }, { replaceMerge: ['series'] });
   }
 
@@ -340,11 +380,108 @@ export function createMapChart(container) {
     focusCity = null;
   }
 
+  function flyAvatar(imageDataUrl, onDone) {
+    if (!currentRecord || !imageDataUrl || reducedMotion) {
+      onDone?.();
+      return;
+    }
+    const token = ++avatarFlyToken;
+    const img = document.createElement('img');
+    img.src = imageDataUrl;
+    img.alt = '';
+    img.draggable = false;
+    Object.assign(img.style, {
+      position: 'absolute',
+      left: '0',
+      top: '0',
+      width: '56px',
+      height: '56px',
+      objectFit: 'cover',
+      borderRadius: '14px',
+      border: '1px solid rgba(45, 226, 255, 0.55)',
+      boxShadow: '0 0 18px rgba(45, 226, 255, 0.55)',
+      pointerEvents: 'none',
+      zIndex: '9',
+      opacity: '0',
+      willChange: 'transform',
+      transition: 'opacity 0.25s ease',
+    });
+    container.appendChild(img);
+
+    const p0 = chart.convertToPixel('geo', [currentRecord.longitude, currentRecord.latitude]);
+    const p2 = chart.convertToPixel('geo', CAMPUS_COORDS);
+    const dx = p2[0] - p0[0];
+    const dy = p2[1] - p0[1];
+    const midX = (p0[0] + p2[0]) / 2;
+    const midY = (p0[1] + p2[1]) / 2;
+    // 与轨迹线一致的曲率（curveness 0.26），控制点公式与 ECharts linesLayout 完全一致
+    const curve = 0.26;
+    const p1 = [midX + dy * curve, midY - dx * curve];
+
+    const half = 28;
+    const duration = 1900;
+    const start = performance.now();
+
+    const place = (u) => {
+      const mt = 1 - u;
+      const x = mt * mt * p0[0] + 2 * mt * u * p1[0] + u * u * p2[0];
+      const y = mt * mt * p0[1] + 2 * mt * u * p1[1] + u * u * p2[1];
+      img.style.transform = `translate(${x - half}px, ${y - half}px)`;
+    };
+
+    img.style.opacity = '1';
+    place(0);
+
+    function step(now) {
+      if (token !== avatarFlyToken) {
+        img.remove();
+        return;
+      }
+      const u = Math.min(1, (now - start) / duration);
+      place(u);
+      if (u < 1) {
+        requestAnimationFrame(step);
+      } else {
+        window.setTimeout(() => {
+          img.remove();
+          onDone?.();
+        }, 520);
+      }
+    }
+    requestAnimationFrame(step);
+  }
+
   render();
   const resize = debounce(() => chart.resize(), ANIMATION.resizeDebounce);
   const observer = new ResizeObserver(resize);
   observer.observe(container);
   window.addEventListener('resize', resize, { passive: true });
+
+  chart.on('georoam', () => {
+    if (focusStage !== 'overview') return;
+    const geoOpt = chart.getOption().geo;
+    const geo = Array.isArray(geoOpt) ? geoOpt[0] : geoOpt;
+    if (geo?.center && geo.zoom != null) {
+      userCenter = [...geo.center];
+      userZoom = geo.zoom;
+      const show = userZoom >= CITY_DETAIL_ZOOM;
+      if (show !== cityDetailVisible) {
+        cityDetailVisible = show;
+        render();
+      } else if (show) {
+        // 连续缩放时同步城市边界的中心与缩放，保持与地图对齐
+        chart.setOption({
+          series: [{ id: 'city-boundaries', center: userCenter, zoom: userZoom }],
+        });
+      }
+    }
+  });
+
+  function resetView() {
+    userCenter = [...DEFAULT_MAP_CENTER];
+    userZoom = 1;
+    render();
+  }
 
   return {
     updateHistory(nextRecords) { records = [...nextRecords]; render(); },
@@ -373,7 +510,9 @@ export function createMapChart(container) {
     revealHistory() { cancelFocusSequence(); render(); },
     completeFocus() { completeFocusSequence(); },
     setBurst(active) { bursting = active; render(); },
+    flyAvatar,
+    resetView,
     resize: () => chart.resize(),
-    dispose() { cancelFocusSequence(); observer.disconnect(); window.removeEventListener('resize', resize); resize.cancel(); chart.dispose(); },
+    dispose() { avatarFlyToken += 1; cancelFocusSequence(); observer.disconnect(); window.removeEventListener('resize', resize); resize.cancel(); chart.dispose(); },
   };
 }

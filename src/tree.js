@@ -428,6 +428,39 @@ export function createTree(container) {
     context.restore();
   }
 
+  function drawCenterBall(cx, cy, now) {
+    const coreR = 13 + campusHoverProgress * 4;
+    const outerR = coreR + 24;
+    const breath = 0.5 + 0.5 * Math.sin(now * 0.0018);
+
+    context.save();
+
+    // 外层光晕（呼吸脉动，蓝色）
+    const halo = context.createRadialGradient(cx, cy, coreR * 0.4, cx, cy, outerR + 14);
+    halo.addColorStop(0, `rgba(90, 150, 255, ${0.32 + breath * 0.14})`);
+    halo.addColorStop(0.5, `rgba(45, 110, 255, ${0.16 + breath * 0.08})`);
+    halo.addColorStop(1, 'rgba(45, 110, 255, 0)');
+    context.fillStyle = halo;
+    context.beginPath();
+    context.arc(cx, cy, outerR + 14, 0, Math.PI * 2);
+    context.fill();
+
+    // 球体核心（蓝色径向渐变 + 强发光）
+    const core = context.createRadialGradient(cx - coreR * 0.3, cy - coreR * 0.35, 0, cx, cy, coreR);
+    core.addColorStop(0, '#ffffff');
+    core.addColorStop(0.3, '#dbe9ff');
+    core.addColorStop(0.65, '#4a8dff');
+    core.addColorStop(1, '#1246a6');
+    context.shadowBlur = 30;
+    context.shadowColor = 'rgba(61, 123, 255, 0.95)';
+    context.fillStyle = core;
+    context.beginPath();
+    context.arc(cx, cy, coreR, 0, Math.PI * 2);
+    context.fill();
+
+    context.restore();
+  }
+
   function drawNetwork(now) {
     const provinceCount = networkProvinces.length;
     const maxCities = networkProvinces.reduce((max, province) => Math.max(max, province.groups.length), 0);
@@ -505,8 +538,11 @@ export function createTree(container) {
         let cityX = centerX + Math.cos(cityAngle) * currentCityRadius;
         let cityY = centerY + Math.sin(cityAngle) * currentCityRadius;
         const screenPoint = projectPoint(cityX, cityY);
-        const minX = citySide < 0 ? 84 : 18;
-        const maxX = citySide > 0 ? width - 84 : width - 18;
+        // 按文字实际宽度动态预留文字侧边距，避免城市名超出盒子
+        context.font = '400 10px "PingFang SC", "Microsoft YaHei", sans-serif';
+        const sideMargin = (14 + context.measureText(`${group.city} · ${group.records.length}`).width) * graphScale + 12;
+        const minX = citySide < 0 ? sideMargin : 18;
+        const maxX = citySide > 0 ? width - sideMargin : width - 18;
         screenPoint.x = clamp(screenPoint.x, minX, maxX);
         screenPoint.y = clamp(screenPoint.y, 20, height - 20);
         cityX = width / 2 + (screenPoint.x - width / 2) / graphScale;
@@ -614,24 +650,49 @@ export function createTree(container) {
       });
     });
 
-    // Destination stays at the visual center of the relationship network.
-    const breath = 0.5 + 0.5 * Math.sin(now * 0.0018);
-    context.fillStyle = `rgba(45, 226, 255, ${0.12 + breath * 0.08})`;
-    context.beginPath();
-    context.arc(centerX, centerY, 34 + breath * 5 + campusHoverProgress * 9, 0, Math.PI * 2);
-    context.fill();
-    context.fillStyle = '#f6fdff';
-    context.shadowBlur = 24;
-    context.shadowColor = '#2de2ff';
-    context.beginPath();
-    context.arc(centerX, centerY, 11 + campusHoverProgress * 3, 0, Math.PI * 2);
-    context.fill();
+    // 四周省份按逆时针依次向中心发射携带 0/1 的光点
+    const travelDuration = 5000;
+    const inwardProvinces = networkProvinces.slice().sort((a, b) => (b.angle - a.angle));
+    context.save();
+    context.lineCap = 'round';
+    inwardProvinces.forEach((province, i) => {
+      const position = positions.get(province.name);
+      if (!position) return;
+      const phase = i / Math.max(1, inwardProvinces.length);
+      const t = ((now / travelDuration) + phase) % 1;
+      const fromX = position.x;
+      const fromY = position.y;
+      const dotX = fromX + (centerX - fromX) * t;
+      const dotY = fromY + (centerY - fromY) * t;
+      // 拖尾
+      const trailT = Math.max(0, t - 0.14);
+      context.strokeStyle = 'rgba(90, 170, 255, 0.32)';
+      context.lineWidth = 1.2;
+      context.beginPath();
+      context.moveTo(fromX + (centerX - fromX) * trailT, fromY + (centerY - fromY) * trailT);
+      context.lineTo(dotX, dotY);
+      context.stroke();
+      // 随机携带 0 或 1 的光球
+      const cycle = Math.floor(now / travelDuration + phase);
+      const bit = hashString(`${i}-${cycle}`) % 2 === 0 ? '0' : '1';
+      context.shadowBlur = 10;
+      context.shadowColor = 'rgba(90, 170, 255, 0.9)';
+      context.fillStyle = 'rgba(210, 240, 255, 0.95)';
+      context.font = '700 8px ui-monospace, SFMono-Regular, Consolas, monospace';
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.fillText(bit, dotX, dotY);
+    });
     context.shadowBlur = 0;
+    context.restore();
+
+    // 目的地：关系网络中心的蓝色光球
+    drawCenterBall(centerX, centerY, now);
     context.fillStyle = '#edfaff';
     context.font = '600 12px "PingFang SC", "Microsoft YaHei", sans-serif';
     context.textAlign = 'center';
     context.textBaseline = 'top';
-    context.fillText('川农信工 · 雅安', centerX, centerY + 20);
+    context.fillText('川农信工 · 雅安', centerX, centerY + 56);
     context.restore();
   }
 

@@ -178,7 +178,7 @@ function openAvatar(mode) {
 
 const resultController = createResultController({
   onFinish: finishResult,
-  onAi: () => openAvatar('ai'),
+  onAnime: () => openAvatar('anime'),
   onManual: () => openAvatar('manual'),
   onDownload: downloadAvatar,
 });
@@ -188,9 +188,13 @@ avatarController = createAvatarController({
     if (!activeRecord) return;
     activeAvatar = avatar;
     tree.bindAvatar(activeRecord.id, avatar.imageDataUrl);
+    // 切到地图，让头像沿轨迹从生源地飞到学校，飞完再展示结果卡
+    visualMode = 'map';
     setState(APP_STATES.RESULT);
-    setStatus(`数字形象已抵达 · ${activeRecord.city} → 川农信工`);
-    resultController.show(activeRecord, avatar);
+    chart.flyAvatar(avatar.imageDataUrl, () => {
+      setStatus(`数字形象已抵达 · ${activeRecord.city} → 川农信工`);
+      resultController.show(activeRecord, avatar);
+    });
   },
   onCancel: () => {
     if (!activeRecord) return;
@@ -233,6 +237,9 @@ async function generateRoute() {
     await wait(520);
     if (token !== flowToken) return;
     records = appendRecord(record);
+    document.querySelector('#undo-btn').disabled = records.length === 0;
+    document.querySelector('#export-btn').disabled = records.length === 0;
+    document.querySelector('#clear-records-btn').disabled = records.length === 0;
     chart.updateHistory(records);
     updateStatistics(records);
     tree.updateRecords(records);
@@ -283,11 +290,11 @@ function buildLedGlyph(rows, isColon = false) {
 }
 
 function greetingForHour(hour) {
-  if (hour >= 6 && hour < 9) return 'console.log("☀️ 早安，信工新同学");';
+  if (hour >= 6 && hour < 9) return 'console.log("☀️早安,信工新同学");';
   if (hour >= 9 && hour < 12) return 'git commit -m "早安，新同学"';
   if (hour >= 12 && hour < 14) return '// 午间小憩，下午继续debug';
   if (hour >= 14 && hour < 18) return 'echo "🌤️ 下午好 · 欢迎加入信工";';
-  if (hour >= 18) return "return '🌙 晚上好 · 信工网络欢迎你';";
+  if (hour >= 18) return "return '🌙晚上好·信工网络欢迎你';";
   return '⚠️ sleep() · 明天再debug';
 }
 
@@ -365,6 +372,23 @@ function initFullscreen() {
   });
 }
 
+function generateDemoRecords(count) {
+  const now = Date.now();
+  return Array.from({ length: count }, (_, index) => {
+    const city = cities[Math.floor(Math.random() * cities.length)];
+    return {
+      id: createRecordId(),
+      province: city.province,
+      city: city.city,
+      longitude: city.longitude,
+      latitude: city.latitude,
+      distanceKm: calculateDistanceKm(city.latitude, city.longitude, CAMPUS.latitude, CAMPUS.longitude),
+      createdAt: new Date(now - index * 37_000).toISOString(),
+      colorIndex: index % ROUTE_COLORS.length,
+    };
+  });
+}
+
 function initAdmin() {
   const close = () => { elements.adminOverlay.hidden = true; };
   const open = () => {
@@ -376,17 +400,47 @@ function initAdmin() {
     document.querySelector('#admin-record-count').textContent = String(records.length);
     document.querySelector('#admin-close').focus();
   };
-  let clickCount = 0;
-  let resetClicks;
-  document.querySelector('#version-trigger').addEventListener('click', () => {
-    clickCount += 1;
-    window.clearTimeout(resetClicks);
-    if (clickCount >= 5) {
-      clickCount = 0;
-      open();
+  const passwordOverlay = document.querySelector('#password-overlay');
+  const passwordInput = document.querySelector('#password-input');
+  const passwordError = document.querySelector('#password-error');
+
+  const closePassword = () => {
+    passwordOverlay.hidden = true;
+    passwordInput.value = '';
+    passwordInput.type = 'password';
+    passwordError.hidden = true;
+  };
+  const openPassword = () => {
+    if (appState === APP_STATES.ANIMATING || appState === APP_STATES.RESULT || appState === APP_STATES.AVATAR) {
+      showToast('请先完成当前新生的打卡流程', 'warning');
       return;
     }
-    resetClicks = window.setTimeout(() => { clickCount = 0; }, 2_000);
+    passwordInput.value = '';
+    passwordError.hidden = true;
+    passwordOverlay.hidden = false;
+    passwordInput.focus();
+  };
+  const verifyPassword = () => {
+    if (passwordInput.value === 'sicau_2026') {
+      closePassword();
+      open();
+    } else {
+      passwordError.hidden = false;
+      passwordInput.select();
+    }
+  };
+
+  const passwordToggle = document.querySelector('#password-toggle');
+  document.querySelector('#admin-entry').addEventListener('click', openPassword);
+  document.querySelector('#password-close').addEventListener('click', closePassword);
+  document.querySelector('#password-submit').addEventListener('click', verifyPassword);
+  passwordToggle.addEventListener('pointerenter', () => { passwordInput.type = 'text'; });
+  passwordToggle.addEventListener('pointerleave', () => { passwordInput.type = 'password'; });
+  passwordInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') verifyPassword();
+  });
+  passwordOverlay.addEventListener('pointerdown', (event) => {
+    if (event.target === passwordOverlay) closePassword();
   });
   document.querySelector('#admin-close').addEventListener('click', close);
   elements.adminOverlay.addEventListener('pointerdown', (event) => {
@@ -421,6 +475,12 @@ function initAdmin() {
     refreshData();
     showToast('全部本地记录已清空', 'success');
   });
+  document.querySelector('#demo-btn').addEventListener('click', () => {
+    if (!window.confirm('将生成 150 条演示数据并覆盖当前记录。是否继续？')) return;
+    saveRecords(generateDemoRecords(150));
+    refreshData();
+    showToast('已生成 150 条演示数据', 'success');
+  });
   return { close };
 }
 
@@ -445,6 +505,12 @@ function initViewToggle() {
     });
   });
   applyVisualMode();
+}
+
+function initMapReset() {
+  document.querySelector('#map-reset-btn')?.addEventListener('click', () => {
+    chart?.resetView();
+  });
 }
 
 function initAmbientCanvas() {
@@ -595,6 +661,7 @@ initFullscreen();
 initRankingToggle();
 initRankingTabs();
 initViewToggle();
+initMapReset();
 visualReady = true;
 setVisualLoading(true, '正在加载界面');
 const finishInitialLoading = () => {

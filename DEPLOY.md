@@ -53,7 +53,7 @@ id -nG | grep -q docker && echo "OK 在 docker 组" || echo "需运行: sudo use
 |---|---|---|
 | `SERVER_HOST` | 服务器公网 IP 或域名 | ✅ |
 | `SERVER_USER` | SSH 登录用户名（需能跑 docker） | ✅ |
-| `SERVER_SSH_KEY` | SSH **私钥**内容（PEM 格式，一整段，含首尾 `BEGIN/END` 行） | ✅ |
+| `SERVER_PASSWORD` | SSH **登录密码** | ✅ |
 | `SERVER_SSH_PORT` | SSH 端口（默认 22） | 可选 |
 | `APP_PORT` | 对外映射端口（默认 3001） | 可选 |
 | `BAIDU_API_KEY` | 百度智能云 API Key | 可选* |
@@ -61,18 +61,11 @@ id -nG | grep -q docker && echo "OK 在 docker 组" || echo "需运行: sudo use
 
 \* 不填时线上「人物动漫化」会显示未配置并引导用简单捏脸；其余功能全部正常。填了才有动漫化。
 
-**SSH 私钥怎么准备**（服务器上执行）：
+**认证说明**：
 
-```bash
-# 若服务器已有 ~/.ssh/id_ed25519 等现成密钥对也可直接复用
-ssh-keygen -t ed25519 -N "" -f ~/.ssh/id_deploy -C "github-actions"
-cat ~/.ssh/id_deploy.pub >> ~/.ssh/authorized_keys
-chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys
-```
-
-把 `~/.ssh/id_deploy`（私钥）整段内容填进 `SERVER_SSH_KEY`。
-
-> 这是 Git 公开仓库也没关系：Secrets 是加密存储的，不会出现在 workflow 日志里；私钥只用于 SSH 连接你的服务器。
+- 直接用 SSH **密码**登录即可，无需配置密钥。把 `SERVER_PASSWORD` 填成该用户的登录密码。
+- 服务器需要允许密码登录：`/etc/ssh/sshd_config` 中 `PasswordAuthentication yes`（多数发行版默认开启）。
+- 安全提示：GitHub Actions 的出口 IP 不固定。若服务器启用了 fail2ban / IP 白名单，频繁失败的密码尝试或限制策略可能把连接拒掉；如遇到，可在服务器侧把 github-actions 的出口 IP 段加白，或改用密钥认证。
 
 ## 三、部署与验证
 
@@ -118,7 +111,7 @@ server {
 
 ## 常见问题
 
-- **Action 一直红、日志停在 scp/load**：多半是 `SERVER_HOST`/`SERVER_USER`/`SERVER_SSH_KEY` 不对，或服务器防火墙没放行 22 端口。
+- **Action 一直红、日志停在 scp/load**：多半是 `SERVER_HOST`/`SERVER_USER`/`SERVER_PASSWORD` 不对，或服务器防火墙没放行 22 端口、禁止了密码登录。
 - **`/opt/orientation` 无法创建**：没做第一步的 `mkdir + chown`，或 `SERVER_USER` 权限不足。
 - **部署成功但页面打不开**：云服务商安全组 / 服务器防火墙没放行 `APP_PORT`。
 - **本地试构建**：装 Docker 后执行 `docker build -t orientation-test .` 可自测 Dockerfile。

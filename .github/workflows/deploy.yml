@@ -1,0 +1,93 @@
+name: Deploy Docker to Server
+
+on:
+  push:
+    branches: [lyh]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-docker
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t orientation:${{ github.sha }} .
+
+      - name: Save image to tar.gz
+        run: docker save orientation:${{ github.sha }} | gzip > orientation.tar.gz
+
+      - name: Make sure remote dir exists
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_SSH_PORT || '22' }}
+          script: |
+            set -e
+            mkdir -p /opt/orientation
+
+      - name: Upload image to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_SSH_PORT || '22' }}
+          source: "orientation.tar.gz"
+          target: "/opt/orientation"
+
+      - name: Load image and restart container
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_SSH_PORT || '22' }}
+          envs: APP_PORT
+          script: |
+            set -e
+            APP_PORT="${APP_PORT:-3001}"
+            IMG=orientation:${{ github.sha }}
+
+            # 百度密钥由 GitHub Secrets 注入，写入服务器 .env（容器只读环境，不进镜像）
+            cat > /opt/orientation/.env <<'EOF'
+            BAIDU_API_KEY=${{ secrets.BAIDU_API_KEY }}
+            BAIDU_SECRET_KEY=${{ secrets.BAIDU_SECRET_KEY }}
+            EOF
+
+            echo "Loading image..."
+            docker load < /opt/orientation/orientation.tar.gz
+
+            echo "Restarting container..."
+            docker rm -f orientation 2>/dev/null || true
+            docker run -d --name orientation --restart unless-stopped \
+              -p "${APP_PORT}:3001" \
+              --env-file /opt/orientation/.env \
+              "${IMG}"
+
+            echo "Waiting for health check..."
+            ok=""
+            for i in $(seq 1 20); do
+              if curl -fsS "http://127.0.0.1:${APP_PORT}/api/health" >/dev/null 2>&1; then
+                ok=1
+                break
+              fi
+              sleep 1
+            done
+
+            if [ -z "$ok" ]; then
+              echo "Health check failed. Recent logs:"
+              docker logs --tail 80 orientation || true
+              exit 1
+            fi
+            echo "Deployed OK -> http://127.0.0.1:${APP_PORT}"
+            docker image prune -f >/dev/null 2>&1 || true
+        env:
+          APP_PORT: ${{ secrets.APP_PORT || '3001' }}

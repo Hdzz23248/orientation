@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Build output（构建阶段自行生成）
+dist/
+dist-ssr/
+
+# Local environment files（密钥绝不能进镜像）
+.env
+.env.*
+
+# Logs & temp
+*.log
+npm-debug.log*
+*.tmp
+
+# Git & CI
+.git/
+.github/
+
+# 本项目的部署产物
+*.tar
+*.tar.gz

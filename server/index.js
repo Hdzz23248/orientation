@@ -1,7 +1,11 @@
 import 'dotenv/config';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { createAnimeAvatar } from './baidu-avatar.js';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const configuredPort = Number(process.env.AVATAR_SERVER_PORT || 3001);
 const port = Number.isInteger(configuredPort) && configuredPort > 0 && configuredPort < 65_536
@@ -70,6 +74,20 @@ app.use((error, _request, response, _next) => {
   });
 });
 
-app.listen(port, '127.0.0.1', () => {
-  console.log(`Avatar API: http://127.0.0.1:${port}`);
+// 容器一体化部署：若仓库中已生成 dist 前端产物，则一并托管静态页面。
+// 本地 `npm run dev`（无 dist）时此段自动跳过，仍只提供 /api。
+const distDir = path.resolve(__dirname, '../dist');
+if (fs.existsSync(path.join(distDir, 'index.html'))) {
+  app.use(express.static(distDir));
+  // 本项目无 history 路由，仅对非 /api 的 GET 兜底回 index.html。
+  app.use((request, response, next) => {
+    if (request.method !== 'GET' || request.path.startsWith('/api/')) return next();
+    response.sendFile(path.join(distDir, 'index.html'));
+  });
+  console.log(`[web] serving static front-end from ${distDir}`);
+}
+
+const host = process.env.HOST || '0.0.0.0';
+app.listen(port, host, () => {
+  console.log(`Avatar API: http://${host}:${port}`);
 });
